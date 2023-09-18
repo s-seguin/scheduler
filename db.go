@@ -2,9 +2,16 @@ package main
 
 import (
 	"database/sql"
+	"os"
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+func DeleteTestDb() {
+	os.Remove("./_sqlite/scheduler.db")
+	os.Remove("./_sqlite/schduler.db-shm")
+	os.Remove("./_sqlite/scheduler.db-wal")
+}
 
 func CreateDb(name string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", name)
@@ -47,6 +54,11 @@ func Migrate(db *sql.DB) error {
 		return err
 	}
 
+	err = createBookingTable(db)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -67,9 +79,9 @@ func createScheduleTable(db *sql.DB) error {
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS schedule (
 			id INTEGER NOT NULL PRIMARY KEY,
-			userId INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-			name TEXT, 
-			isActive BOOLEAN,
+			-- userId INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+			createdBy TEXT,
+			name TEXT,
 			createdOn TEXT,
 			updatedOn TEXT
 		);
@@ -79,13 +91,26 @@ func createScheduleTable(db *sql.DB) error {
 
 func createTimeSlotTable(db *sql.DB) error {
 	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS timeslot (
+		CREATE TABLE IF NOT EXISTS timeSlot (
 			id INTEGER NOT NULL PRIMARY KEY,
 			scheduleId INTEGER NOT NULL REFERENCES schedule(id) ON DELETE CASCADE,
 			start TEXT, 
 			end TEXT,
-			isBooked BOOLEAN, 
-			bookingEmail TEXT,
+			bookingId INTEGER REFERENCES booking(id) ON DELETE SET NULL,
+			createdOn TEXT,
+			updatedOn TEXT
+		);
+	`)
+	return err
+}
+
+func createBookingTable(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS booking (
+			id INTEGER NOT NULL PRIMARY KEY,
+			timeSlotId INTEGER NOT NULL REFERENCES timeSlot(id) ON DELETE CASCADE,
+			bookerName TEXT,
+			bookerEmail TEXT,
 			createdOn TEXT,
 			updatedOn TEXT
 		);
