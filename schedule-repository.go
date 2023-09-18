@@ -1,17 +1,20 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"time"
 )
 
 type ScheduleRepository interface {
 	FindAll() ([]*Schedule, error)
 	FindById(id int64) (*Schedule, error)
-	Store(schedule *Schedule) (int64, error)
+	Store(ctx context.Context, schedule *Schedule) error
 	Update(schedule *Schedule) error
 	Delete(schedule *Schedule) error
-	StoreTimeSlots(scheduleId int64, newTimeSlots []*TimeSlot) error
+	StoreWeeklyAvailability(ctx context.Context, scheduleId int64, weeklyAvailability *WeeklyAvailability) error
+	StoreTimeSlots(ctx context.Context, scheduleId int64, newTimeSlots []*TimeSlot) error
 	GetAllTimeSlots(scheduleId int64) ([]*TimeSlot, error)
 	GetTimeSlotsWithinRange(scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error)
 }
@@ -66,30 +69,34 @@ func (r *SQLScheduleRepository) FindById(id int64) (*Schedule, error) {
 
 }
 
-func (r *SQLScheduleRepository) Store(schedule *Schedule) (int64, error) {
+func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) error {
 	if schedule.ID != 0 {
 		err := r.Update(schedule)
-		return schedule.ID, err
+		return err
 	}
 
-	// todo -- use a transaction here
-	res, err := r.DB.Exec(`INSERT INTO schedule (name, createdBy, createdOn, updatedOn) VALUES (?, ?, ?, ?)`, schedule.Name, schedule.CreatedBy, time.Now().UTC(), time.Now().UTC())
+	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return err
 	}
+	defer tx.Rollback() // defer rollback incase anything fails
 
-	scheduleId, err := res.LastInsertId()
+	res, err := r.DB.ExecContext(ctx, `INSERT INTO schedule (name, createdBy, createdOn, updatedOn) VALUES (?, ?, ?, ?)`, schedule.Name, schedule.CreatedBy, time.Now().UTC(), time.Now().UTC())
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	// for _, timeSlot := range schedule.TimeSlots {
-	// 	_, err := r.DB.Exec(`INSERT INTO timeSlot (start, end, scheduleId, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, timeSlot.Start.UTC(), timeSlot.End.UTC(), scheduleId, time.Now().UTC(), time.Now().UTC())
-	// 	if err != nil {
-	// 		return 0, err
-	// 	}
-	// }
-	return scheduleId, nil
+	schedule.ID, err = res.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *SQLScheduleRepository) Update(schedule *Schedule) error {
@@ -100,16 +107,21 @@ func (r *SQLScheduleRepository) Delete(schedule *Schedule) error {
 	return nil
 }
 
-func (r *SQLScheduleRepository) StoreTimeSlots(scheduleId int64, newTimeSlots []*TimeSlot) error {
-	// todo -- use a transaction here
+func (r *SQLScheduleRepository) StoreTimeSlots(ctx context.Context, scheduleId int64, newTimeSlots []*TimeSlot) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // defer rollback incase anything fails
+
 	for _, timeSlot := range newTimeSlots {
-		_, err := r.DB.Exec(`INSERT INTO timeSlot (start, end, scheduleId, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, timeSlot.Start.UTC(), timeSlot.End.UTC(), scheduleId, time.Now().UTC(), time.Now().UTC())
+		_, err := r.DB.ExecContext(ctx, `INSERT INTO timeSlot (start, end, scheduleId, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, timeSlot.Start.UTC(), timeSlot.End.UTC(), scheduleId, time.Now().UTC(), time.Now().UTC())
 		if err != nil {
 			return err
 		}
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 func (r *SQLScheduleRepository) GetAllTimeSlots(scheduleId int64) ([]*TimeSlot, error) {
@@ -177,4 +189,40 @@ func (r *SQLScheduleRepository) parseTimeSlotSqlRows(rows *sql.Rows) ([]*TimeSlo
 	}
 
 	return timeslots, nil
+}
+
+func (r *SQLScheduleRepository) StoreWeeklyAvailability(ctx context.Context, scheduleId int64, weeklyAvailability *WeeklyAvailability) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // defer rollback incase anything fails
+
+	res, err := r.DB.ExecContext(ctx, `INSERT INTO availability (scheduleId, startDate, endDate, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, scheduleId, weeklyAvailability.StartDate.UTC(), weeklyAvailability.EndDate.UTC(), time.Now().UTC(), time.Now().UTC())
+	if err != nil {
+		return err
+	}
+
+	weeklyAvailability.ID, err = res.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	currentDay := weeklyAvailability.StartDate
+	for currentDay.Before(weeklyAvailability.EndDate) {
+		dailyAvailability := weeklyAvailability.GetAvailabilityForDay(currentDay.Weekday())
+		for _, availabilityBlock := range dailyAvailability {
+			startTime := fmt.Sprintf("%02d:%02d", availabilityBlock.StartHour, availabilityBlock.StartMin)
+			endTime := fmt.Sprintf("%02d:%02d", availabilityBlock.EndHour, availabilityBlock.EndMin)
+
+			_, err := r.DB.ExecContext(ctx, `INSERT INTO availabilityBlock (availabilityId, day, startTime, endTime, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?, ?)`, weeklyAvailability.ID, currentDay.Weekday(), startTime, endTime, time.Now().UTC(), time.Now().UTC())
+			if err != nil {
+				return err
+			}
+		}
+
+		currentDay = currentDay.AddDate(0, 0, 1)
+	}
+
+	return tx.Commit()
 }

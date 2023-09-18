@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"time"
 )
 
@@ -151,24 +151,27 @@ type ScheduleService interface {
 }
 
 type ScheduleServiceImpl struct {
-	repository ScheduleRepository
+	repository               ScheduleRepository
+	defaultRepositoryTimeout time.Duration
 }
 
 func NewScheduleService(repository ScheduleRepository) ScheduleService {
 	return &ScheduleServiceImpl{
-		repository: repository,
+		repository:               repository,
+		defaultRepositoryTimeout: 15 * time.Second,
 	}
 }
 
 func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string) (*Schedule, error) {
 	schedule := NewSchedule(name, createdBy)
 
-	id, err := s.repository.Store(schedule)
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	err := s.repository.Store(ctx, schedule)
 	if err != nil {
 		return nil, err
 	}
-
-	schedule.ID = id
 
 	return schedule, nil
 }
@@ -186,8 +189,6 @@ func (s *ScheduleServiceImpl) GenerateTimeSlots(scheduleId int64, availability *
 	timeslots := []*TimeSlot{}
 
 	for currentDay.Before(availability.EndDate) {
-		fmt.Println(currentDay)
-		currentDay = currentDay.AddDate(0, 0, 1)
 		dailyAvailability := availability.GetAvailabilityForDay(currentDay.Weekday())
 
 		for _, availabilityBlock := range dailyAvailability {
@@ -199,9 +200,13 @@ func (s *ScheduleServiceImpl) GenerateTimeSlots(scheduleId int64, availability *
 				start = start.Add(availability.TimeSlotDuration)
 			}
 		}
+		currentDay = currentDay.AddDate(0, 0, 1)
 	}
 
-	s.repository.StoreTimeSlots(scheduleId, timeslots)
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	s.repository.StoreTimeSlots(ctx, scheduleId, timeslots)
 	return timeslots
 }
 
@@ -214,7 +219,7 @@ func (s *ScheduleServiceImpl) CreateDefaultWeeklyAvailability(scheduleId int64) 
 	saturdayMorningAvailability, _ := NewAvailabilityBlock(9, 0, 12, 0)
 	saturdayAfternoonAvailability, _ := NewAvailabilityBlock(13, 0, 17, 0)
 
-	return &WeeklyAvailability{
+	wa := &WeeklyAvailability{
 		StartDate:        time.Now(),
 		EndDate:          time.Now().AddDate(0, 0, 7),
 		TimeSlotDuration: 15 * time.Minute,
@@ -226,6 +231,12 @@ func (s *ScheduleServiceImpl) CreateDefaultWeeklyAvailability(scheduleId int64) 
 		Friday:           []*AvailabilityBlock{},
 		Saturday:         []*AvailabilityBlock{saturdayMorningAvailability, saturdayAfternoonAvailability},
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	s.repository.StoreWeeklyAvailability(ctx, scheduleId, wa)
+	return wa
 }
 
 func (s *ScheduleServiceImpl) GetAllTimeSlots(scheduleId int64) ([]*TimeSlot, error) {
