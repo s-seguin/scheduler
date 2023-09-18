@@ -108,7 +108,9 @@ func createTimeSlotTable(db *sql.DB) error {
 			end TEXT,
 			bookingId INTEGER REFERENCES booking(id) ON DELETE SET NULL,
 			createdOn TEXT,
-			updatedOn TEXT
+			updatedOn TEXT,
+			UNIQUE(id, bookingId),
+			UNIQUE(scheduleId, start, end)
 		);
 	`)
 	return err
@@ -122,8 +124,11 @@ func createBookingTable(db *sql.DB) error {
 			bookerName TEXT,
 			bookerEmail TEXT,
 			createdOn TEXT,
-			updatedOn TEXT
+			updatedOn TEXT,
+			UNIQUE(id, timeSlotId)
 		);
+
+
 	`)
 	return err
 }
@@ -151,7 +156,8 @@ func createAvailabilityBlockTable(db *sql.DB) error {
 			startTime TEXT,
 			endTime TEXT,
 			createdOn TEXT,
-			updatedOn TEXT
+			updatedOn TEXT,
+			UNIQUE(availabilityId, day, startTime, endTime)
 		);
 	`)
 	return err

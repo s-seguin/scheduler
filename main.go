@@ -15,6 +15,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Error creating db", err)
 	}
+	defer db.Close()
 
 	err = Migrate(db)
 	if err != nil {
@@ -40,8 +41,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	for _, timeslot := range timeslots {
-		log.Println("time slots within range: ", timeslot.Start.Local(), timeslot.End.Local())
+	for i, timeslot := range timeslots {
+		if i == 0 {
+			bookingId, err := scheduleService.BookTimeSlot(s.ID, timeslot, "stuart", "s@g.com")
+			bookingId, err = scheduleService.BookTimeSlot(s.ID, timeslot, "stuart", "should fail")
+			if err != nil {
+				log.Println("error booking timeslot", err)
+			} else {
+				log.Println("booking id: ", bookingId)
+			}
+		}
+		log.Println("time slots within range: ", timeslot.ID, timeslot.Start.Local(), timeslot.End.Local(), timeslot.Booking, timeslot.IsAvailable())
 	}
 
 	server.MountRouter("/schedules", scheduleController.MountRoutes())

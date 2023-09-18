@@ -105,11 +105,14 @@ func (t *TimeSlot) Book(bookerName string, bookerEmail string) {
 	t.Booking = NewBooking(t, bookerName, bookerEmail)
 }
 
+// todo -- can probably remove the reference to TimeSlot here
 type Booking struct {
 	ID          int64     `json:"id"`
 	TimeSlot    *TimeSlot `json:"timeSlot"`
 	BookerName  string    `json:"bookerName"`
 	BookerEmail string    `json:"bookerEmail"`
+	CreatedOn   time.Time `json:"createdOn"`
+	UpdatedOn   time.Time `json:"updatedOn"`
 }
 
 func NewBooking(timeSlot *TimeSlot, bookerName string, bookerEmail string) *Booking {
@@ -148,6 +151,7 @@ type ScheduleService interface {
 	GenerateTimeSlots(scheduleId int64, availability *WeeklyAvailability) []*TimeSlot
 	FindAll() ([]*Schedule, error)
 	FindById(id int64) (*Schedule, error)
+	BookTimeSlot(scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) (bookingId int64, err error)
 }
 
 type ScheduleServiceImpl struct {
@@ -177,11 +181,17 @@ func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string) (*Sc
 }
 
 func (s *ScheduleServiceImpl) FindAll() ([]*Schedule, error) {
-	return s.repository.FindAll()
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	return s.repository.FindAll(ctx)
 }
 
 func (s *ScheduleServiceImpl) FindById(id int64) (*Schedule, error) {
-	return s.repository.FindById(id)
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	return s.repository.FindById(ctx, id)
 }
 
 func (s *ScheduleServiceImpl) GenerateTimeSlots(scheduleId int64, availability *WeeklyAvailability) []*TimeSlot {
@@ -240,9 +250,26 @@ func (s *ScheduleServiceImpl) CreateDefaultWeeklyAvailability(scheduleId int64) 
 }
 
 func (s *ScheduleServiceImpl) GetAllTimeSlots(scheduleId int64) ([]*TimeSlot, error) {
-	return s.repository.GetAllTimeSlots(scheduleId)
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	return s.repository.GetAllTimeSlots(ctx, scheduleId)
 }
 
 func (s *ScheduleServiceImpl) GetTimeSlotsWithinRange(scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error) {
-	return s.repository.GetTimeSlotsWithinRange(scheduleId, start, end)
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	return s.repository.GetTimeSlotsWithinRange(ctx, scheduleId, start, end)
+}
+
+func (s *ScheduleServiceImpl) BookTimeSlot(scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) (bookingId int64, err error) {
+	if !timeslot.IsAvailable() {
+		return 0, errors.New("timeslot is not available")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	return s.repository.BookTimeSlot(ctx, scheduleId, timeslot, bookerName, bookerEmail)
 }
