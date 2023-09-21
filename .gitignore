@@ -19,3 +19,4 @@ go.work
 
 _sqlite/*
 tmp/*
+node_modules/*

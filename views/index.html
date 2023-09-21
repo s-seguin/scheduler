@@ -1,1 +1,9 @@
-<h1>Index</h1>
+<head>
+    <link href="/static/css/styles.css" rel="stylesheet" />
+    <script src="/static/js/htmx.min.js"></script>
+</head>
+<h1 hx-get="/schedules/calendar" hx-target="#calendar" hx-trigger="load" class="text-3xl font-bold underline">
+    Index</h1>
+<div id="cal-container" class="flex items-center justify-center">
+    <div id="calendar"></div>
+</div>

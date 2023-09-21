@@ -123,6 +123,7 @@ func NewBooking(timeSlot *TimeSlot, bookerName string, bookerEmail string) *Book
 	}
 }
 
+// later this can hold the public url etc...
 type Schedule struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`

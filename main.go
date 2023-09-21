@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 )
 
 func main() {
@@ -44,6 +45,10 @@ func main() {
 	for i, timeslot := range timeslots {
 		if i == 0 {
 			bookingId, err := scheduleService.BookTimeSlot(s.ID, timeslot, "stuart", "s@g.com")
+			if err != nil {
+				log.Fatal("error booking timeslot", err)
+			}
+			log.Println("booking id: ", bookingId)
 			bookingId, err = scheduleService.BookTimeSlot(s.ID, timeslot, "stuart", "should fail")
 			if err != nil {
 				log.Println("error booking timeslot", err)
@@ -54,6 +59,7 @@ func main() {
 		log.Println("time slots within range: ", timeslot.ID, timeslot.Start.Local(), timeslot.End.Local(), timeslot.Booking, timeslot.IsAvailable())
 	}
 
+	server.ServeStatic("/static", http.Dir("./public/static"))
 	server.MountRouter("/schedules", scheduleController.MountRoutes())
 	server.Start()
 }
