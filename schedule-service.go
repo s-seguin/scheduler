@@ -125,12 +125,12 @@ func NewBooking(timeSlot *TimeSlot, bookerName string, bookerEmail string) *Book
 
 // later this can hold the public url etc...
 type Schedule struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	CreatedBy string    `json:"createdBy"`
-	CreatedOn time.Time `json:"createdOn"`
-	UpdatedOn time.Time `json:"updatedOn"`
-	// TimeSlots []*TimeSlot `json:"timeSlots"`
+	ID        int64       `json:"id"`
+	Name      string      `json:"name"`
+	CreatedBy string      `json:"createdBy"`
+	CreatedOn time.Time   `json:"createdOn"`
+	UpdatedOn time.Time   `json:"updatedOn"`
+	TimeSlots []*TimeSlot `json:"timeSlots"`
 }
 
 func NewSchedule(name string, createdBy string) *Schedule {
@@ -140,9 +140,9 @@ func NewSchedule(name string, createdBy string) *Schedule {
 	}
 }
 
-// func (s *Schedule) AddTimeSlot(timeSlot *TimeSlot) {
-// 	s.TimeSlots = append(s.TimeSlots, timeSlot)
-// }
+func (s *Schedule) AddTimeSlot(timeSlot *TimeSlot) {
+	s.TimeSlots = append(s.TimeSlots, timeSlot)
+}
 
 type ScheduleService interface {
 	CreateSchedule(name string, createdBy string) (*Schedule, error)
@@ -152,7 +152,7 @@ type ScheduleService interface {
 	GenerateTimeSlots(scheduleId int64, availability *WeeklyAvailability) []*TimeSlot
 	FindAll() ([]*Schedule, error)
 	FindById(id int64) (*Schedule, error)
-	BookTimeSlot(scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) (bookingId int64, err error)
+	BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (bookingId int64, err error)
 }
 
 type ScheduleServiceImpl struct {
@@ -264,7 +264,26 @@ func (s *ScheduleServiceImpl) GetTimeSlotsWithinRange(scheduleId int64, start ti
 	return s.repository.GetTimeSlotsWithinRange(ctx, scheduleId, start, end)
 }
 
-func (s *ScheduleServiceImpl) BookTimeSlot(scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) (bookingId int64, err error) {
+// todo -- should this accept and ID instead?
+// todo -- should this return a booking?
+func (s *ScheduleServiceImpl) BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (int64, error) {
+	schedule, err := s.FindById(scheduleId)
+	if err != nil {
+		return 0, err
+	}
+
+	var timeslot *TimeSlot
+	for _, ts := range schedule.TimeSlots {
+		if ts.ID == timeslotId {
+			timeslot = ts
+			break
+		}
+	}
+
+	if timeslot == nil {
+		return 0, errors.New("timeslot not found")
+	}
+
 	if !timeslot.IsAvailable() {
 		return 0, errors.New("timeslot is not available")
 	}

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"database/sql"
+	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,12 +42,150 @@ func NewScheduleController(scheduleService ScheduleService) ScheduleController {
 
 func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 	c.router.Get("/", c.Index)
-	c.router.Get("/calendar", c.GetCalendar)
+	c.router.Get("/{scheduleId}/calendar", c.RenderCalendar)
+	c.router.Get("/{scheduleId}/timeslots", c.RenderTimeslots)
+
+	c.router.Get("/{scheduleId}", func(w http.ResponseWriter, r *http.Request) {
+		scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
+		if err != nil {
+			http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
+			return
+		}
+
+		dateStr := r.URL.Query().Get("date")
+		date, err := time.Parse("2006-01-02 15:04:05 -0700 MST", dateStr)
+		if err != nil {
+			log.Println("error parsing date", err)
+			date = time.Now()
+		}
+
+		schedule, err := c.scheduleService.FindById(scheduleId)
+		// todo -- make custom error
+		if err == sql.ErrNoRows {
+			http.Error(w, "Schedule not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			http.Error(w, "Error getting schedule", http.StatusInternalServerError)
+			log.Println(err)
+			return
+		}
+
+		days := []NullableTime{}
+		startOfMonth := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, time.Local)
+		startOfNextMonth := startOfMonth.AddDate(0, 1, 0)
+
+		numDaysTillFirstSunday := int(time.Sunday - startOfMonth.Weekday())
+		currentDay := startOfMonth.AddDate(0, 0, numDaysTillFirstSunday)
+
+		for currentDay.Before(startOfNextMonth) {
+			days = append(days, NullableTime{Time: currentDay, IsThisMonth: currentDay.Month() == date.Month(), HasAvailableAppointment: dayHasTimeSlot(currentDay, schedule.TimeSlots)})
+			currentDay = currentDay.AddDate(0, 0, 1)
+		}
+
+		fmt.Printf("schedule: %v\n", schedule)
+
+		c.render.HTML(w, http.StatusOK, "schedule", ScheduleViewModel{Schedule: schedule, Date: date, NextMonth: startOfNextMonth, PreviousMonth: startOfMonth.AddDate(0, 0, -1), Days: days})
+	})
+
+	c.router.Get("/{scheduleId}/timeslots/{timeslotId}/booking-form", func(w http.ResponseWriter, r *http.Request) {
+		scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
+		if err != nil {
+			http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
+			return
+		}
+
+		timeslotId, err := strconv.ParseInt(chi.URLParam(r, "timeslotId"), 10, 64)
+		if err != nil {
+			http.Error(w, "Timeslot ID was not a valid int64", http.StatusBadRequest)
+			return
+		}
+
+		schedule, err := c.scheduleService.FindById(scheduleId)
+		if err != nil {
+			http.Error(w, "Error getting schedule", http.StatusInternalServerError)
+			return
+		}
+		// todo -- implement this instead of the for loop
+		// timeslot, err := c.scheduleService.GetTimeSlotById(timeslotId)
+
+		var timeslot *TimeSlot
+		for _, t := range schedule.TimeSlots {
+			if t.ID == timeslotId {
+				timeslot = t
+				break
+			}
+		}
+
+		if timeslot == nil {
+			http.Error(w, "Timeslot not found", http.StatusNotFound)
+			return
+		}
+
+		// todo -- return HTML instead
+		if !timeslot.IsAvailable() {
+			http.Error(w, "Timeslot is not available", http.StatusNotFound)
+			return
+		}
+
+		c.render.HTML(w, http.StatusOK, "booking-form", &TimeSlotBookingViewModel{TimeSlot: timeslot, Schedule: schedule})
+	})
+
+	c.router.Post("/{scheduleId}/timeslots/{timeslotId}/book", func(w http.ResponseWriter, r *http.Request) {
+		scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
+		if err != nil {
+			http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
+			return
+		}
+
+		timeslotId, err := strconv.ParseInt(chi.URLParam(r, "timeslotId"), 10, 64)
+		if err != nil {
+			http.Error(w, "Timeslot ID was not a valid int64", http.StatusBadRequest)
+			return
+		}
+
+		bookingId, err := c.scheduleService.BookTimeSlot(scheduleId, timeslotId, r.FormValue("name"), r.FormValue("email"))
+		if err != nil {
+			http.Error(w, "Error booking timeslot", http.StatusInternalServerError)
+			return
+		}
+
+		c.render.Text(w, http.StatusOK, fmt.Sprintf("Booking successful! Your booking ID is %d <button hx-get=\"/schedules/%d\" hx-target=\"#scheduleContainer\">Return to schedule</button>", bookingId, scheduleId))
+	})
 
 	return c.router
 }
 
+func dayHasTimeSlot(day time.Time, timeslots []*TimeSlot) bool {
+	for _, timeslot := range timeslots {
+		if timeslot.Start.Year() != day.Year() && timeslot.End.Year() != day.Year() {
+			continue
+		}
+
+		if timeslot.Start.Month() != day.Month() && timeslot.End.Month() != day.Month() {
+			continue
+		}
+
+		if timeslot.Start.Day() == day.Day() || timeslot.End.Day() == day.Day() {
+			return true
+		}
+	}
+	return false
+}
+
+type TimeSlotBookingViewModel struct {
+	TimeSlot *TimeSlot
+	Schedule *Schedule
+}
+
+type ScheduleViewModel struct {
+	Schedule      *Schedule
+	Date          time.Time
+	NextMonth     time.Time
+	PreviousMonth time.Time
+	Days          []NullableTime
+}
 type CalendarViewModel struct {
+	ScheduleId    int64
 	Days          []NullableTime
 	CurrentMonth  string
 	NextMonth     string
@@ -52,16 +193,30 @@ type CalendarViewModel struct {
 }
 
 type NullableTime struct {
-	Time    time.Time
-	IsValid bool
+	Time                    time.Time
+	HasAvailableAppointment bool
+	IsThisMonth             bool
 }
 
 func (c *ScheduleControllerImpl) Index(w http.ResponseWriter, r *http.Request) {
 
-	c.render.HTML(w, http.StatusOK, "index", nil)
+	schedules, err := c.scheduleService.FindAll()
+	if err != nil {
+		http.Error(w, "Error getting schedules", http.StatusInternalServerError)
+		return
+	}
+
+	c.render.HTML(w, http.StatusOK, "index", schedules)
 }
 
-func (c *ScheduleControllerImpl) GetCalendar(w http.ResponseWriter, r *http.Request) {
+// todo -- we can render the calendar and the timeslots in the same view, the timeslots would be for the current day
+func (c *ScheduleControllerImpl) RenderCalendar(w http.ResponseWriter, r *http.Request) {
+	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
+	if err != nil {
+		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
+		return
+	}
+
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01")
@@ -86,17 +241,72 @@ func (c *ScheduleControllerImpl) GetCalendar(w http.ResponseWriter, r *http.Requ
 		start = start.AddDate(0, 0, -int(start.Weekday()))
 	}
 
+	timeslots, err := c.scheduleService.GetTimeSlotsWithinRange(scheduleId, now, end.AddDate(0, 0, -1))
+	if err != nil {
+		http.Error(w, "Error getting ts", http.StatusInternalServerError)
+		return
+	}
+
 	for start.Before(end) {
 		m := start.Month()
-		days = append(days, NullableTime{Time: start, IsValid: m == now.Month()})
+		// todo -- this is horrendous, need to fix it
+		hasAvailableAppointment := false
+		for _, t := range timeslots {
+			fmt.Printf("timeslot %s available? %v\n", t.Start, t.IsAvailable())
+			// 	t := *timeslot
+			// 	// log.Printf("t.Start: %v timeslot.End: %v start: %v iA: %b sAs: %b sEs: %b eBe: %b", timeslot.Start, timeslot.End, start, timeslot.IsAvailable(), timeslot.Start.After(start), timeslot.End.Before(start.AddDate(0, 0, 1)), timeslot.End.Before(end))
+			// 	log.Print(t, &timeslot, t.IsAvailable(), t.Booking)
+			// 	// log.Print(ia, timeslot.Booking, timeslot.Booking == nil)
+			if t.IsAvailable() && (t.Start.After(start) || t.Start.Equal(start)) && t.End.Before(start.AddDate(0, 0, 1)) {
+				hasAvailableAppointment = true
+			}
+		}
+
+		days = append(days, NullableTime{Time: start, IsThisMonth: m == now.Month(), HasAvailableAppointment: hasAvailableAppointment})
 		start = start.AddDate(0, 0, 1)
 	}
 
+	for _, day := range days {
+		fmt.Printf("day: %v\n", day)
+	}
+
 	calendarViewModel := CalendarViewModel{
+		ScheduleId:    scheduleId,
 		Days:          days,
 		CurrentMonth:  now.Format("Jan 2006"),
 		NextMonth:     now.AddDate(0, 1, 0).Format("2006-01"),
 		PreviousMonth: now.AddDate(0, -1, 0).Format("2006-01"),
 	}
 	c.render.HTML(w, http.StatusOK, "calendar", calendarViewModel)
+}
+
+func (c *ScheduleControllerImpl) RenderTimeslots(w http.ResponseWriter, r *http.Request) {
+	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
+	if err != nil {
+		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
+		return
+	}
+
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+
+	start, err := time.Parse("2006-01-02 15:04:05 -0700 MST", date)
+	if err != nil {
+		http.Error(w, "Error parsing date", http.StatusInternalServerError)
+		return
+	}
+
+	end := start.AddDate(0, 0, 1)
+
+	fmt.Printf("start: %v end: %v\n", start, end)
+
+	timeslots, err := c.scheduleService.GetTimeSlotsWithinRange(scheduleId, start, end)
+	if err != nil {
+		http.Error(w, "Error getting ts", http.StatusInternalServerError)
+		return
+	}
+
+	c.render.HTML(w, http.StatusOK, "timeslots", timeslots)
 }

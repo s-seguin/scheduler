@@ -1,10 +1,10 @@
-<div class="w-full">
+<div class="w-full h-56">
     <div class="grid items-center justify-center">
         <div class="grid items-center justify-center grid-cols-3">
-            <button hx-get="/schedules/calendar?date={{.PreviousMonth}}" hx-target="#calendar"
+            <button hx-get="/schedules/{{.ScheduleId}}/calendar?date={{.PreviousMonth}}" hx-target="#calendar"
                 class="bg-gray-900 text-white px-4 py-2 rounded-md shadow-sm hover:bg-gray-700">Prev</button>
             <p class="text-center text-gray-950 pb-6">{{.CurrentMonth}}</p>
-            <button hx-get="/schedules/calendar?date={{.NextMonth}}" hx-target="#calendar"
+            <button hx-get="/schedules/{{.ScheduleId}}/calendar?date={{.NextMonth}}" hx-target="#calendar"
                 class="bg-gray-900 text-white px-4 py-2 rounded-md shadow-sm hover:bg-gray-700">Next</button>
         </div>
         <div class="grid gap-2 w-full h-full grid-cols-7 items-center">
@@ -16,17 +16,60 @@
             <p class="text-center text-gray-950 pb-6">Fr</p>
             <p class="text-center text-gray-950 pb-6">Sa</p>
         </div>
-        <div class="grid w-full h-full gap-2 grid-cols-7 items-center p-2 bg-gray-50 rounded-md">
+        <div class="grid w-full h-full gap-2 grid-cols-7 items-center bg-slate-200 p-2 rounded-md">
             {{range .Days}}
-            {{if .IsValid}}
-            <div
-                class="text-center py-2 px-2 w-10 h-10 hover:bg-gray-300 hover:text-white text-gray-800 cursor-pointer rounded-full shadow-sm">
-                <p>{{.Time.Day}}</p>
+            {{if not .IsThisMonth}}
+            <div></div>
+            {{else if .HasAvailableAppointment}}
+            <div hx-get="/schedules/{{$.ScheduleId}}/timeslots?date={{.Time}}" hx-target="#timeslots"
+                class="text-center py-2 px-2 w-10 h-10  bg-blue-500 hover:bg-gray-300 hover:text-white text-gray-800 cursor-pointer rounded-full shadow-sm">
+                {{.Time.Day}}
             </div>
             {{else}}
-            <div></div>
+            <div
+                class="text-center py-2 px-2 w-10 h-10 hover:bg-gray-300 hover:text-white text-gray-800 cursor-pointer rounded-full shadow-sm">
+                {{.Time.Day}}
+            </div>
             {{end}}
             {{end}}
         </div>
     </div>
 </div>
+<!-- <div>
+    <div class="row justify-content-end">
+        <div class="col">
+            <button hx-get="/schedules/{{.ScheduleId}}/calendar?date={{.PreviousMonth}}" hx-target="#calendar"
+                class="btn btn-primary">Prev</button>
+            <div class="d-inline-block">
+                <h2 class="text-center">{{.CurrentMonth}}</h2>
+            </div>
+            <button hx-get="/schedules/{{.ScheduleId}}/calendar?date={{.NextMonth}}" hx-target="#calendar"
+                class="btn btn-primary">Next</button>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col col-1">Su</div>
+        <div class="col col-1">Mo</div>
+        <div class="col col-1">Tu</div>
+        <div class="col col-1">We</div>
+        <div class="col col-1">Th</div>
+        <div class="col col-1">Fr</div>
+        <div class="col col-1">Sa</div>
+    </div>
+    <div class="row align-items-center">
+        {{range $i, $day := .Days}}
+        {{if eq (mod $i 7) 0}}
+    </div>
+    <div class="row">
+        {{end}}
+        {{if not $day.IsThisMonth}}
+        <div class="col col-1"></div>
+        {{else if $day.HasAvailableAppointment}}
+        <div hx-get="/schedules/{{$.ScheduleId}}/timeslots?date={{.Time}}" hx-target="#timeslots"
+            class="col col-1 btn btn-xs btn-primary">{{$day.Time.Day}}</div>
+        {{else}}
+        <div class="col col-1">{{$day.Time.Day}}</div>
+        {{end}}
+        {{end}}
+    </div>
+</div> -->

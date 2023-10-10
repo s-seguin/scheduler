@@ -57,12 +57,12 @@ func (r *SQLScheduleRepository) FindAll(ctx context.Context) ([]*Schedule, error
 
 		createdOnTime, err := time.Parse(r.dateLayout, createdOn)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error parsing createdOn: %w", err)
 		}
 
 		updatedOnTime, err := time.Parse(r.dateLayout, updatedOn)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error parsing updatedOn: %w", err)
 		}
 
 		schedules = append(schedules, &Schedule{
@@ -78,27 +78,134 @@ func (r *SQLScheduleRepository) FindAll(ctx context.Context) ([]*Schedule, error
 }
 
 func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedule, error) {
-	row := r.DB.QueryRowContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn FROM schedule WHERE id = ?`, id)
+	rows, err := r.DB.QueryContext(ctx, `
+		SELECT 
+			s.id, 
+			s.name, 
+			s.createdBy, 
+			s.createdOn, 
+			s.updatedOn, 
+			t.id,
+			t.start,
+			t.end,
+			t.createdOn,
+			t.updatedOn,
+			b.id,
+			b.bookerName,
+			b.bookerEmail,
+			b.createdOn,
+			b.updatedOn
+		FROM schedule AS s 
+		LEFT OUTER JOIN timeSlot AS t ON s.id = t.scheduleId
+		LEFT OUTER JOIN booking AS b ON t.id = b.timeSlotId 
+		WHERE s.id = ?`, id)
+	if err != nil {
+		return nil, err
+	}
 
 	var scheduleId int64
 	var name string
 	var createdBy string
 	var createdOn string
 	var updatedOn string
+	var createdOnTime time.Time
+	var updatedOnTime time.Time
 
-	err := row.Scan(&scheduleId, &name, &createdBy, &createdOn, &updatedOn)
-	if err != nil {
-		return nil, err
+	var timeslots []*TimeSlot
+
+	if !rows.Next() {
+		return nil, sql.ErrNoRows
 	}
 
-	createdOnTime, err := time.Parse(r.dateLayout, createdOn)
-	if err != nil {
-		return nil, err
-	}
+	for rows.Next() {
+		var timeSlotId sql.NullInt64
+		var start sql.NullString
+		var end sql.NullString
+		var tsCreatedOn sql.NullString
+		var tsUpdatedOn sql.NullString
 
-	updatedOnTime, err := time.Parse(r.dateLayout, updatedOn)
-	if err != nil {
-		return nil, err
+		var bookingId sql.NullInt64
+		var bookerName sql.NullString
+		var bookerEmail sql.NullString
+		var bookingCreatedOn sql.NullString
+		var bookingUpdatedOn sql.NullString
+
+		err := rows.Scan(&scheduleId, &name, &createdBy, &createdOn, &updatedOn, &timeSlotId, &start, &end, &tsCreatedOn, &tsUpdatedOn, &bookingId, &bookerName, &bookerEmail, &bookingCreatedOn, &bookingUpdatedOn)
+		if err != nil {
+			return nil, err
+		}
+
+		createdOnTime, err = time.Parse(r.dateLayout, createdOn)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing createdOn: %w", err)
+		}
+
+		updatedOnTime, err = time.Parse(r.dateLayout, updatedOn)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing updatedOn: %w", err)
+		}
+
+		if !timeSlotId.Valid {
+			continue
+		}
+
+		startTime, err := time.Parse(r.dateLayout, start.String)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing start: %w", err)
+		}
+
+		endTime, err := time.Parse(r.dateLayout, end.String)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing end: %w", err)
+		}
+
+		tsCreatedOnTime, err := time.Parse(r.dateLayout, tsCreatedOn.String)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing tsCreatedOn: %w", err)
+		}
+
+		tsUpdatedOnTime, err := time.Parse(r.dateLayout, tsUpdatedOn.String)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing tsUpdatedOn: %w", err)
+		}
+
+		if !bookingId.Valid {
+			timeslots = append(timeslots, &TimeSlot{
+				ID:        timeSlotId.Int64,
+				Start:     startTime,
+				End:       endTime,
+				CreatedOn: tsCreatedOnTime,
+				UpdatedOn: tsUpdatedOnTime,
+			})
+			continue
+		}
+
+		bookingCreatedOnTime, err := time.Parse(r.dateLayout, bookingCreatedOn.String)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing bookingCreatedOn: %w", err)
+		}
+
+		bookingUpdatedOnTime, err := time.Parse(r.dateLayout, bookingUpdatedOn.String)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing bookingUpdatedOn: %w", err)
+		}
+
+		timeslots = append(timeslots, &TimeSlot{
+			ID:        timeSlotId.Int64,
+			Start:     startTime,
+			End:       endTime,
+			CreatedOn: tsCreatedOnTime,
+			UpdatedOn: tsUpdatedOnTime,
+			Booking: &Booking{
+				ID:          bookingId.Int64,
+				TimeSlot:    nil,
+				BookerName:  bookerName.String,
+				BookerEmail: bookerEmail.String,
+				CreatedOn:   bookingCreatedOnTime,
+				UpdatedOn:   bookingUpdatedOnTime,
+			},
+		})
+		continue
 	}
 
 	return &Schedule{
@@ -107,9 +214,43 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 		CreatedBy: createdBy,
 		CreatedOn: createdOnTime,
 		UpdatedOn: updatedOnTime,
+		TimeSlots: timeslots,
 	}, nil
-
 }
+
+// func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedule, error) {
+// 	row := r.DB.QueryRowContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn FROM schedule WHERE id = ?`, id)
+
+// 	var scheduleId int64
+// 	var name string
+// 	var createdBy string
+// 	var createdOn string
+// 	var updatedOn string
+
+// 	err := row.Scan(&scheduleId, &name, &createdBy, &createdOn, &updatedOn)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	createdOnTime, err := time.Parse(r.dateLayout, createdOn)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	updatedOnTime, err := time.Parse(r.dateLayout, updatedOn)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	return &Schedule{
+// 		ID:        scheduleId,
+// 		Name:      name,
+// 		CreatedBy: createdBy,
+// 		CreatedOn: createdOnTime,
+// 		UpdatedOn: updatedOnTime,
+// 	}, nil
+
+// }
 
 func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) error {
 	if schedule.ID != 0 {
@@ -123,7 +264,7 @@ func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) e
 	}
 	defer tx.Rollback() // defer rollback incase anything fails
 
-	res, err := r.DB.ExecContext(ctx, `INSERT INTO schedule (name, createdBy, createdOn, updatedOn) VALUES (?, ?, ?, ?)`, schedule.Name, schedule.CreatedBy, time.Now().UTC(), time.Now().UTC())
+	res, err := r.DB.ExecContext(ctx, `INSERT INTO schedule (name, createdBy, createdOn, updatedOn) VALUES (?, ?, ?, ?)`, schedule.Name, schedule.CreatedBy, time.Now(), time.Now())
 	if err != nil {
 		return err
 	}
@@ -168,7 +309,7 @@ func (r *SQLScheduleRepository) StoreTimeSlots(ctx context.Context, scheduleId i
 	defer tx.Rollback() // defer rollback incase anything fails
 
 	for _, timeSlot := range newTimeSlots {
-		_, err := r.DB.ExecContext(ctx, `INSERT INTO timeSlot (start, end, scheduleId, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, timeSlot.Start.UTC(), timeSlot.End.UTC(), scheduleId, time.Now().UTC(), time.Now().UTC())
+		_, err := r.DB.ExecContext(ctx, `INSERT INTO timeSlot (start, end, scheduleId, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, timeSlot.Start, timeSlot.End, scheduleId, time.Now(), time.Now())
 		if err != nil {
 			return err
 		}
@@ -191,7 +332,8 @@ func (r *SQLScheduleRepository) GetAllTimeSlots(ctx context.Context, scheduleId 
 			b.createdOn,
 			b.updatedOn 
 		FROM timeSlot AS t 
-		LEFT OUTER JOIN booking AS b 
+		LEFT OUTER JOIN booking AS b
+		ON t.id = b.timeSlotId AND t.bookingId = b.id
 		WHERE t.scheduleId = ?`, scheduleId)
 	if err != nil {
 		return nil, err
@@ -216,7 +358,8 @@ func (r *SQLScheduleRepository) GetTimeSlotsWithinRange(ctx context.Context, sch
 			b.updatedOn 
 		FROM timeSlot AS t 
 		LEFT OUTER JOIN booking AS b 
-		WHERE t.scheduleId = ? AND t.start >= ? AND t.end <= ?`, scheduleId, start.UTC(), end.UTC())
+		ON t.id = b.timeSlotId AND t.bookingId = b.id
+		WHERE t.scheduleId = ? AND t.start >= ? AND t.end <= ?`, scheduleId, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +437,6 @@ func (r *SQLScheduleRepository) parseTimeSlotSqlRows(rows *sql.Rows) ([]*TimeSlo
 			})
 			continue
 		}
-
 		timeslots = append(timeslots, &TimeSlot{
 			ID:        id,
 			Start:     startTime,
@@ -314,7 +456,7 @@ func (r *SQLScheduleRepository) StoreWeeklyAvailability(ctx context.Context, sch
 	}
 	defer tx.Rollback() // defer rollback incase anything fails
 
-	res, err := r.DB.ExecContext(ctx, `INSERT INTO availability (scheduleId, startDate, endDate, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, scheduleId, weeklyAvailability.StartDate.UTC(), weeklyAvailability.EndDate.UTC(), time.Now().UTC(), time.Now().UTC())
+	res, err := r.DB.ExecContext(ctx, `INSERT INTO availability (scheduleId, startDate, endDate, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, scheduleId, weeklyAvailability.StartDate, weeklyAvailability.EndDate, time.Now(), time.Now())
 	if err != nil {
 		return err
 	}
@@ -331,7 +473,7 @@ func (r *SQLScheduleRepository) StoreWeeklyAvailability(ctx context.Context, sch
 			startTime := fmt.Sprintf("%02d:%02d", availabilityBlock.StartHour, availabilityBlock.StartMin)
 			endTime := fmt.Sprintf("%02d:%02d", availabilityBlock.EndHour, availabilityBlock.EndMin)
 
-			_, err := r.DB.ExecContext(ctx, `INSERT INTO availabilityBlock (availabilityId, day, startTime, endTime, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?, ?)`, weeklyAvailability.ID, currentDay.Weekday(), startTime, endTime, time.Now().UTC(), time.Now().UTC())
+			_, err := r.DB.ExecContext(ctx, `INSERT INTO availabilityBlock (availabilityId, day, startTime, endTime, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?, ?)`, weeklyAvailability.ID, currentDay.Weekday(), startTime, endTime, time.Now(), time.Now())
 			if err != nil {
 				return err
 			}
@@ -355,8 +497,8 @@ func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int
 		return 0, fmt.Errorf("timeslot already booked. bookingId: %d", bookingId)
 	}
 
-	bookingCreatedOn := time.Now().UTC()
-	bookingUpdatedOn := time.Now().UTC()
+	bookingCreatedOn := time.Now()
+	bookingUpdatedOn := time.Now()
 
 	res, err := r.DB.ExecContext(ctx, `INSERT INTO booking (timeSlotId, bookerName, bookerEmail, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, timeslot.ID, bookerName, bookerEmail, bookingCreatedOn, bookingUpdatedOn)
 	if err != nil {

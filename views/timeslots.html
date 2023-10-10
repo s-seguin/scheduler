@@ -1,0 +1,18 @@
+<div class="h-80 overflow-y-scroll flex flex-col">
+    {{range .}}
+    <div class="w-80 m-2 flex flex-row shrink-0 border-2 border-slate-200 rounded-xl ">
+        <div class="basis-3/4 flex-col shrink-0">
+            <p class="text-gray-950 pb-6">{{.Start.Format "15:04 MST"}}</p>
+            <p class="text-gray-950 pb-6">{{.End.Format "15:04 MST"}}</p>
+        </div>
+        <div class="basis-1/4 flex-col shrink-0">
+            {{if .IsAvailable}}
+            <button class="bg-gray-900 text-white px-4 py-2 rounded-md shadow-sm hover:bg-gray-700">Book</button>
+            {{else}}
+            <button disabled
+                class="bg-gray-900 text-white px-4 py-2 rounded-md shadow-sm hover:bg-gray-700">Book</button>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+</div>
