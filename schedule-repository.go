@@ -15,8 +15,6 @@ type ScheduleRepository interface {
 	Store(ctx context.Context, schedule *Schedule) error
 	Update(ctx context.Context, scheduleId *Schedule) error
 	Delete(ctx context.Context, scheduleId *Schedule) error
-	StoreWeeklyAvailability(ctx context.Context, scheduleId int64, weeklyAvailability *WeeklyAvailability) error
-	StoreTimeSlots(ctx context.Context, scheduleId int64, newTimeSlots []*TimeSlot) error
 	GetAllTimeSlots(ctx context.Context, scheduleId int64) ([]*TimeSlot, error)
 	GetTimeSlotsWithinRange(ctx context.Context, scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error)
 	BookTimeSlot(ctx context.Context, scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) (bookingId int64, err error)
@@ -208,13 +206,55 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 		continue
 	}
 
+	rows, err = r.DB.QueryContext(ctx, `SELECT day, startTime, endTime FROM availability WHERE scheduleId = ? ORDER BY startTime`, id)
+	if err != nil {
+		return nil, err
+	}
+
+	var weeklyAvailability = &WeeklyAvailability{}
+
+	for rows.Next() {
+		var dayOfWeek int
+		var startTime string
+		var endTime string
+
+		err := rows.Scan(&dayOfWeek, &startTime, &endTime)
+		if err != nil {
+			return nil, err
+		}
+
+		// todo -- can we clean this up?
+		ab, err := NewAvailabilityBlockFromStrings(startTime, endTime)
+		if err != nil {
+			return nil, err
+		}
+
+		switch dayOfWeek {
+		case 0:
+			weeklyAvailability.Sunday = append(weeklyAvailability.Sunday, ab)
+		case 1:
+			weeklyAvailability.Monday = append(weeklyAvailability.Monday, ab)
+		case 2:
+			weeklyAvailability.Tuesday = append(weeklyAvailability.Tuesday, ab)
+		case 3:
+			weeklyAvailability.Wednesday = append(weeklyAvailability.Wednesday, ab)
+		case 4:
+			weeklyAvailability.Thursday = append(weeklyAvailability.Thursday, ab)
+		case 5:
+			weeklyAvailability.Friday = append(weeklyAvailability.Friday, ab)
+		case 6:
+			weeklyAvailability.Saturday = append(weeklyAvailability.Saturday, ab)
+		}
+	}
+
 	return &Schedule{
-		ID:        scheduleId,
-		Name:      name,
-		CreatedBy: createdBy,
-		CreatedOn: createdOnTime,
-		UpdatedOn: updatedOnTime,
-		TimeSlots: timeslots,
+		ID:                 scheduleId,
+		Name:               name,
+		CreatedBy:          createdBy,
+		CreatedOn:          createdOnTime,
+		UpdatedOn:          updatedOnTime,
+		TimeSlots:          timeslots,
+		WeeklyAvailability: weeklyAvailability,
 	}, nil
 }
 
@@ -274,6 +314,28 @@ func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) e
 		return err
 	}
 
+	// Store the weekly availability
+	for dayOfWeek := 0; dayOfWeek < 7; dayOfWeek++ {
+		dailyAvailability := schedule.WeeklyAvailability.GetAvailabilityForDay(time.Weekday(dayOfWeek))
+		for _, availabilityBlock := range dailyAvailability {
+			startTime := fmt.Sprintf("%02d:%02d", availabilityBlock.StartHour, availabilityBlock.StartMin)
+			endTime := fmt.Sprintf("%02d:%02d", availabilityBlock.EndHour, availabilityBlock.EndMin)
+
+			_, err := r.DB.ExecContext(ctx, `INSERT INTO availability (scheduleId, day, startTime, endTime, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?, ?)`, schedule.ID, dayOfWeek, startTime, endTime, time.Now(), time.Now())
+			if err != nil {
+				return err
+			}
+
+		}
+	}
+
+	for _, timeSlot := range schedule.TimeSlots {
+		_, err := r.DB.ExecContext(ctx, `INSERT INTO timeSlot (start, end, scheduleId, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, timeSlot.Start, timeSlot.End, schedule.ID, time.Now(), time.Now())
+		if err != nil {
+			return err
+		}
+	}
+
 	err = tx.Commit()
 	if err != nil {
 		return err
@@ -296,23 +358,6 @@ func (r *SQLScheduleRepository) Delete(ctx context.Context, scheduleId *Schedule
 	_, err = r.DB.ExecContext(ctx, `DELETE FROM schedule WHERE id = ?`, scheduleId)
 	if err != nil {
 		return err
-	}
-
-	return tx.Commit()
-}
-
-func (r *SQLScheduleRepository) StoreTimeSlots(ctx context.Context, scheduleId int64, newTimeSlots []*TimeSlot) error {
-	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() // defer rollback incase anything fails
-
-	for _, timeSlot := range newTimeSlots {
-		_, err := r.DB.ExecContext(ctx, `INSERT INTO timeSlot (start, end, scheduleId, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, timeSlot.Start, timeSlot.End, scheduleId, time.Now(), time.Now())
-		if err != nil {
-			return err
-		}
 	}
 
 	return tx.Commit()
@@ -447,42 +492,6 @@ func (r *SQLScheduleRepository) parseTimeSlotSqlRows(rows *sql.Rows) ([]*TimeSlo
 	}
 
 	return timeslots, nil
-}
-
-func (r *SQLScheduleRepository) StoreWeeklyAvailability(ctx context.Context, scheduleId int64, weeklyAvailability *WeeklyAvailability) error {
-	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() // defer rollback incase anything fails
-
-	res, err := r.DB.ExecContext(ctx, `INSERT INTO availability (scheduleId, startDate, endDate, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, scheduleId, weeklyAvailability.StartDate, weeklyAvailability.EndDate, time.Now(), time.Now())
-	if err != nil {
-		return err
-	}
-
-	weeklyAvailability.ID, err = res.LastInsertId()
-	if err != nil {
-		return err
-	}
-
-	currentDay := weeklyAvailability.StartDate
-	for currentDay.Before(weeklyAvailability.EndDate) {
-		dailyAvailability := weeklyAvailability.GetAvailabilityForDay(currentDay.Weekday())
-		for _, availabilityBlock := range dailyAvailability {
-			startTime := fmt.Sprintf("%02d:%02d", availabilityBlock.StartHour, availabilityBlock.StartMin)
-			endTime := fmt.Sprintf("%02d:%02d", availabilityBlock.EndHour, availabilityBlock.EndMin)
-
-			_, err := r.DB.ExecContext(ctx, `INSERT INTO availabilityBlock (availabilityId, day, startTime, endTime, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?, ?)`, weeklyAvailability.ID, currentDay.Weekday(), startTime, endTime, time.Now(), time.Now())
-			if err != nil {
-				return err
-			}
-		}
-
-		currentDay = currentDay.AddDate(0, 0, 1)
-	}
-
-	return tx.Commit()
 }
 
 func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) (bookingId int64, err error) {

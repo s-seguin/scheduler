@@ -59,12 +59,7 @@ func Migrate(db *sql.DB) error {
 		return err
 	}
 
-	err = createWeeklyAvailabilityTable(db)
-	if err != nil {
-		return err
-	}
-
-	err = createAvailabilityBlockTable(db)
+	err = createAvailabilityTable(db)
 	if err != nil {
 		return err
 	}
@@ -92,6 +87,9 @@ func createScheduleTable(db *sql.DB) error {
 			-- userId INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
 			createdBy TEXT,
 			name TEXT,
+			start TEXT,
+			end TEXT,
+			timeSlotDuration INTEGER,
 			createdOn TEXT,
 			updatedOn TEXT
 		);
@@ -133,31 +131,17 @@ func createBookingTable(db *sql.DB) error {
 	return err
 }
 
-func createWeeklyAvailabilityTable(db *sql.DB) error {
+func createAvailabilityTable(db *sql.DB) error {
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS availability (
 			id INTEGER NOT NULL PRIMARY KEY,
 			scheduleId INTEGER NOT NULL REFERENCES schedule(id) ON DELETE CASCADE,
-			startDate TEXT,
-			endDate TEXT,
-			createdOn TEXT,
-			updatedOn TEXT
-		);
-	`)
-	return err
-}
-
-func createAvailabilityBlockTable(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS availabilityBlock (
-			id INTEGER NOT NULL PRIMARY KEY,
-			availabilityId INTEGER NOT NULL REFERENCES availability(id) ON DELETE CASCADE,
 			day TEXT,
 			startTime TEXT,
 			endTime TEXT,
 			createdOn TEXT,
 			updatedOn TEXT,
-			UNIQUE(availabilityId, day, startTime, endTime)
+			UNIQUE(scheduleId, day, startTime, endTime)
 		);
 	`)
 	return err

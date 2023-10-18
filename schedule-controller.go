@@ -41,9 +41,125 @@ func NewScheduleController(scheduleService ScheduleService) ScheduleController {
 }
 
 func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
-	c.router.Get("/", c.Index)
-	c.router.Get("/{scheduleId}/calendar", c.RenderCalendar)
-	c.router.Get("/{scheduleId}/timeslots", c.RenderTimeslots)
+	// c.router.Get("/", c.Index)
+	// c.router.Get("/{scheduleId}/calendar", c.RenderCalendar)
+	// c.router.Get("/{scheduleId}/timeslots", c.RenderTimeslots)
+
+	c.router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		schedules, err := c.scheduleService.FindAll()
+		if err != nil {
+			http.Error(w, "Error getting schedules", http.StatusInternalServerError)
+			return
+		}
+
+		c.render.HTML(w, http.StatusOK, "schedules", &SchedulesViewModel{schedules})
+	})
+
+	c.router.Post("/", func(w http.ResponseWriter, r *http.Request) {
+		name := r.FormValue("name")
+		createdBy := r.FormValue("createdBy")
+		startDate := r.FormValue("startDate")
+		endDate := r.FormValue("endDate")
+
+		start, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			http.Error(w, "Bad start date", http.StatusBadRequest)
+			return
+		}
+
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			http.Error(w, "Bad end date", http.StatusBadRequest)
+			return
+		}
+
+		sundayStartTime := r.FormValue("sundayStartTime")
+		sundayEndTime := r.FormValue("sundayEndTime")
+		mondayStartTime := r.FormValue("mondayStartTime")
+		mondayEndTime := r.FormValue("mondayEndTime")
+		tuesdayStartTime := r.FormValue("tuesdayStartTime")
+		tuesdayEndTime := r.FormValue("tuesdayEndTime")
+		wednesdayStartTime := r.FormValue("wednesdayStartTime")
+		wednesdayEndTime := r.FormValue("wednesdayEndTime")
+		thursdayStartTime := r.FormValue("thursdayStartTime")
+		thursdayEndTime := r.FormValue("thursdayEndTime")
+		fridayStartTime := r.FormValue("fridayStartTime")
+		fridayEndTime := r.FormValue("fridayEndTime")
+		saturdayStartTime := r.FormValue("saturdayStartTime")
+		saturdayEndTime := r.FormValue("saturdayEndTime")
+
+		sundayAvailability, err := NewAvailabilityBlockFromStrings(sundayStartTime, sundayEndTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error parsing Sunday availability: %s", err), http.StatusBadRequest)
+			return
+		}
+
+		mondayAvailability, err := NewAvailabilityBlockFromStrings(mondayStartTime, mondayEndTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error parsing Monday availability: %s", err), http.StatusBadRequest)
+			return
+		}
+
+		tuesdayAvailability, err := NewAvailabilityBlockFromStrings(tuesdayStartTime, tuesdayEndTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error parsing Tuesday availability: %s", err), http.StatusBadRequest)
+			return
+		}
+
+		wednesdayAvailability, err := NewAvailabilityBlockFromStrings(wednesdayStartTime, wednesdayEndTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error parsing Wednesday availability: %s", err), http.StatusBadRequest)
+			return
+		}
+
+		thursdayAvailability, err := NewAvailabilityBlockFromStrings(thursdayStartTime, thursdayEndTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error parsing Thursday availability: %s", err), http.StatusBadRequest)
+			return
+		}
+
+		fridayAvailability, err := NewAvailabilityBlockFromStrings(fridayStartTime, fridayEndTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error parsing Friday availability: %s", err), http.StatusBadRequest)
+			return
+		}
+
+		saturdayAvailability, err := NewAvailabilityBlockFromStrings(saturdayStartTime, saturdayEndTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error parsing Saturday availability: %s", err), http.StatusBadRequest)
+			return
+		}
+
+		weeklyAvailability := WeeklyAvailability{
+			Sunday:    []*AvailabilityBlock{sundayAvailability},
+			Monday:    []*AvailabilityBlock{mondayAvailability},
+			Tuesday:   []*AvailabilityBlock{tuesdayAvailability},
+			Wednesday: []*AvailabilityBlock{wednesdayAvailability},
+			Thursday:  []*AvailabilityBlock{thursdayAvailability},
+			Friday:    []*AvailabilityBlock{fridayAvailability},
+			Saturday:  []*AvailabilityBlock{saturdayAvailability},
+		}
+
+		// c.render.Text(w, http.StatusOK, fmt.Sprintf("form data %s %s %v %v %v", name, createdBy, start, end, weeklyAvailability))
+
+		// fmt.Println("here")
+		schedule, err := c.scheduleService.CreateSchedule(name, createdBy, start, end, &weeklyAvailability)
+		// fmt.Println("ici")
+		if err != nil {
+			http.Error(w, "Error creating schedule", http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Printf("schedule %v\n", schedule)
+
+		// fmt.Printf("sundayStartTime %s sundayEndTime %s\nscheduleId %d", sundayStartTime, sundayEndTime, schedule.ID)
+		c.render.Text(w, http.StatusOK, "<h1 hx-get\"/schedules\" hx-trigger=\"delay:3s\">Schedule created!</h1>")
+	})
+
+	// c.router.Post("/create-schedule", func(w http.ResponseWriter, r *http.Request) {
+	// 	name := r.FormValue("Schedule Name")
+	// 	owner := r.FormValue("")
+	// })
 
 	c.router.Get("/{scheduleId}", func(w http.ResponseWriter, r *http.Request) {
 		scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
@@ -82,9 +198,7 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 			currentDay = currentDay.AddDate(0, 0, 1)
 		}
 
-		fmt.Printf("schedule: %v\n", schedule)
-
-		c.render.HTML(w, http.StatusOK, "schedule", ScheduleViewModel{Schedule: schedule, Date: date, NextMonth: startOfNextMonth, PreviousMonth: startOfMonth.AddDate(0, 0, -1), Days: days})
+		c.render.HTML(w, http.StatusOK, "schedule", &ScheduleViewModel{Schedule: schedule, Date: date, NextMonth: startOfNextMonth, PreviousMonth: startOfMonth.AddDate(0, 0, -1), Days: days})
 	})
 
 	c.router.Get("/{scheduleId}/timeslots/{timeslotId}/booking-form", func(w http.ResponseWriter, r *http.Request) {
@@ -170,6 +284,10 @@ func dayHasTimeSlot(day time.Time, timeslots []*TimeSlot) bool {
 		}
 	}
 	return false
+}
+
+type SchedulesViewModel struct {
+	Schedules []*Schedule
 }
 
 type TimeSlotBookingViewModel struct {
@@ -264,10 +382,6 @@ func (c *ScheduleControllerImpl) RenderCalendar(w http.ResponseWriter, r *http.R
 
 		days = append(days, NullableTime{Time: start, IsThisMonth: m == now.Month(), HasAvailableAppointment: hasAvailableAppointment})
 		start = start.AddDate(0, 0, 1)
-	}
-
-	for _, day := range days {
-		fmt.Printf("day: %v\n", day)
 	}
 
 	calendarViewModel := CalendarViewModel{

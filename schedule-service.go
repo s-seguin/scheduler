@@ -3,15 +3,49 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
-type AvailabilityBlock struct {
-	ID        int64 `json:"id"`
-	StartHour int   `json:"startHour"`
-	StartMin  int   `json:"startMin"`
-	EndHour   int   `json:"endHour"`
-	EndMin    int   `json:"endMin"`
+func parseTime(time string) (int, int, error) {
+	parts := strings.Split(time, ":")
+
+	if len(parts) != 2 {
+		return 0, 0, errors.New("time must be in the format HH:MM")
+	}
+
+	hour, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	min, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return hour, min, nil
+}
+
+// todo -- should this belong to the Service?
+func NewAvailabilityBlockFromStrings(start string, end string) (*AvailabilityBlock, error) {
+	startHour, startMin, err := parseTime(start)
+	if err != nil {
+		return nil, err
+	}
+
+	endHour, endMin, err := parseTime(end)
+	if err != nil {
+		return nil, err
+	}
+
+	if startHour > endHour {
+		return nil, errors.New("startHour must be less than endHour")
+	}
+
+	return NewAvailabilityBlock(startHour, startMin, endHour, endMin)
 }
 
 func NewAvailabilityBlock(startHour int, startMin int, endHour int, endMin int) (*AvailabilityBlock, error) {
@@ -46,18 +80,22 @@ func NewAvailabilityBlock(startHour int, startMin int, endHour int, endMin int) 
 	}, nil
 }
 
+type AvailabilityBlock struct {
+	ID        int64 `json:"id"`
+	StartHour int   `json:"startHour"`
+	StartMin  int   `json:"startMin"`
+	EndHour   int   `json:"endHour"`
+	EndMin    int   `json:"endMin"`
+}
 type WeeklyAvailability struct {
-	ID               int64                `json:"id"`
-	StartDate        time.Time            `json:"startDate"`
-	EndDate          time.Time            `json:"endDate"`
-	TimeSlotDuration time.Duration        `json:"timeSlotDuration"`
-	Sunday           []*AvailabilityBlock `json:"sunday"`
-	Monday           []*AvailabilityBlock `json:"monday"`
-	Tuesday          []*AvailabilityBlock `json:"tuesday"`
-	Wednesday        []*AvailabilityBlock `json:"wednesday"`
-	Thursday         []*AvailabilityBlock `json:"thursday"`
-	Friday           []*AvailabilityBlock `json:"friday"`
-	Saturday         []*AvailabilityBlock `json:"saturday"`
+	ID        int64                `json:"id"`
+	Sunday    []*AvailabilityBlock `json:"sunday"`
+	Monday    []*AvailabilityBlock `json:"monday"`
+	Tuesday   []*AvailabilityBlock `json:"tuesday"`
+	Wednesday []*AvailabilityBlock `json:"wednesday"`
+	Thursday  []*AvailabilityBlock `json:"thursday"`
+	Friday    []*AvailabilityBlock `json:"friday"`
+	Saturday  []*AvailabilityBlock `json:"saturday"`
 }
 
 func (a *WeeklyAvailability) GetAvailabilityForDay(day time.Weekday) []*AvailabilityBlock {
@@ -125,31 +163,75 @@ func NewBooking(timeSlot *TimeSlot, bookerName string, bookerEmail string) *Book
 
 // later this can hold the public url etc...
 type Schedule struct {
-	ID        int64       `json:"id"`
-	Name      string      `json:"name"`
-	CreatedBy string      `json:"createdBy"`
-	CreatedOn time.Time   `json:"createdOn"`
-	UpdatedOn time.Time   `json:"updatedOn"`
-	TimeSlots []*TimeSlot `json:"timeSlots"`
+	ID                 int64               `json:"id"`
+	Name               string              `json:"name"`
+	Start              time.Time           `json:"start"`
+	End                time.Time           `json:"end"`
+	TimeSlotDuration   time.Duration       `json:"timeSlotDuration"`
+	CreatedBy          string              `json:"createdBy"`
+	CreatedOn          time.Time           `json:"createdOn"`
+	UpdatedOn          time.Time           `json:"updatedOn"`
+	WeeklyAvailability *WeeklyAvailability `json:"weeklyAvailability"`
+	TimeSlots          []*TimeSlot         `json:"timeSlots"`
 }
 
-func NewSchedule(name string, createdBy string) *Schedule {
+func NewSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability) *Schedule {
 	return &Schedule{
-		Name:      name,
-		CreatedBy: createdBy,
+		Name:               name,
+		CreatedBy:          createdBy,
+		Start:              start,
+		End:                end,
+		TimeSlotDuration:   15 * time.Minute,
+		WeeklyAvailability: weeklyAvailability,
 	}
+}
+
+func (s *Schedule) OverrideTimeSlotDuration(duration time.Duration) {
+	s.TimeSlotDuration = duration
 }
 
 func (s *Schedule) AddTimeSlot(timeSlot *TimeSlot) {
 	s.TimeSlots = append(s.TimeSlots, timeSlot)
 }
 
+func (s *Schedule) AddWeeklyAvailability(weeklyAvailability *WeeklyAvailability) {
+	s.WeeklyAvailability = weeklyAvailability
+}
+
+func (s *Schedule) GenerateTimeSlots() {
+	current := s.Start
+
+	for current.Before(s.End) {
+		fmt.Println("current", current, current.Weekday())
+		availability := s.WeeklyAvailability.GetAvailabilityForDay(current.Weekday())
+		fmt.Println("len availability", len(availability))
+		if len(availability) == 0 {
+			fmt.Println("no availability")
+			continue
+		}
+		fmt.Println("availability", availability)
+		for _, a := range availability {
+			fmt.Println("a", a)
+			start := time.Date(current.Year(), current.Month(), current.Day(), a.StartHour, a.StartMin, 0, 0, time.Local)
+			end := time.Date(current.Year(), current.Month(), current.Day(), a.EndHour, a.EndMin, 0, 0, time.Local)
+
+			fmt.Println("end", end)
+			fmt.Println("duration", s.TimeSlotDuration)
+			for start.Before(end) {
+				fmt.Println("start", start)
+				timeSlot := NewTimeSlot(start, start.Add(s.TimeSlotDuration))
+				s.AddTimeSlot(timeSlot)
+				start = start.Add(s.TimeSlotDuration)
+			}
+		}
+		current = current.AddDate(0, 0, 1)
+	}
+}
+
 type ScheduleService interface {
-	CreateSchedule(name string, createdBy string) (*Schedule, error)
-	CreateDefaultWeeklyAvailability(scheduleId int64) *WeeklyAvailability
+	CreateSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability) (*Schedule, error)
 	GetAllTimeSlots(scheduleId int64) ([]*TimeSlot, error)
 	GetTimeSlotsWithinRange(scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error)
-	GenerateTimeSlots(scheduleId int64, availability *WeeklyAvailability) []*TimeSlot
 	FindAll() ([]*Schedule, error)
 	FindById(id int64) (*Schedule, error)
 	BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (bookingId int64, err error)
@@ -167,12 +249,16 @@ func NewScheduleService(repository ScheduleRepository) ScheduleService {
 	}
 }
 
-func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string) (*Schedule, error) {
-	schedule := NewSchedule(name, createdBy)
+func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability) (*Schedule, error) {
+	fmt.Println("Creating schedule")
+	schedule := NewSchedule(name, createdBy, start, end, weeklyAvailability)
+	fmt.Println("Generating timeslots")
+	schedule.GenerateTimeSlots()
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
 	defer cancel()
 
+	fmt.Println("Storing schedule")
 	err := s.repository.Store(ctx, schedule)
 	if err != nil {
 		return nil, err
@@ -193,61 +279,6 @@ func (s *ScheduleServiceImpl) FindById(id int64) (*Schedule, error) {
 	defer cancel()
 
 	return s.repository.FindById(ctx, id)
-}
-
-func (s *ScheduleServiceImpl) GenerateTimeSlots(scheduleId int64, availability *WeeklyAvailability) []*TimeSlot {
-	currentDay := availability.StartDate
-	timeslots := []*TimeSlot{}
-
-	for currentDay.Before(availability.EndDate) {
-		dailyAvailability := availability.GetAvailabilityForDay(currentDay.Weekday())
-
-		for _, availabilityBlock := range dailyAvailability {
-			start := time.Date(currentDay.Year(), currentDay.Month(), currentDay.Day(), availabilityBlock.StartHour, availabilityBlock.StartMin, 0, 0, time.Local)
-			end := time.Date(currentDay.Year(), currentDay.Month(), currentDay.Day(), availabilityBlock.EndHour, availabilityBlock.EndMin, 0, 0, time.Local)
-
-			for start.Before(end) {
-				timeslots = append(timeslots, NewTimeSlot(start, start.Add(availability.TimeSlotDuration)))
-				start = start.Add(availability.TimeSlotDuration)
-			}
-		}
-		currentDay = currentDay.AddDate(0, 0, 1)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
-	defer cancel()
-
-	s.repository.StoreTimeSlots(ctx, scheduleId, timeslots)
-	return timeslots
-}
-
-func (s *ScheduleServiceImpl) CreateDefaultWeeklyAvailability(scheduleId int64) *WeeklyAvailability {
-	sundayAvailability, _ := NewAvailabilityBlock(9, 0, 17, 0)
-	mondayAvailability, _ := NewAvailabilityBlock(16, 0, 21, 0)
-	tuesdayAvailability, _ := NewAvailabilityBlock(16, 0, 21, 0)
-	wednesdayAvailability, _ := NewAvailabilityBlock(16, 0, 21, 0)
-	thursdayAvailability, _ := NewAvailabilityBlock(16, 0, 21, 0)
-	saturdayMorningAvailability, _ := NewAvailabilityBlock(9, 0, 12, 0)
-	saturdayAfternoonAvailability, _ := NewAvailabilityBlock(13, 0, 17, 0)
-
-	wa := &WeeklyAvailability{
-		StartDate:        time.Now(),
-		EndDate:          time.Now().AddDate(0, 0, 7),
-		TimeSlotDuration: 15 * time.Minute,
-		Sunday:           []*AvailabilityBlock{sundayAvailability},
-		Monday:           []*AvailabilityBlock{mondayAvailability},
-		Tuesday:          []*AvailabilityBlock{tuesdayAvailability},
-		Wednesday:        []*AvailabilityBlock{wednesdayAvailability},
-		Thursday:         []*AvailabilityBlock{thursdayAvailability},
-		Friday:           []*AvailabilityBlock{},
-		Saturday:         []*AvailabilityBlock{saturdayMorningAvailability, saturdayAfternoonAvailability},
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
-	defer cancel()
-
-	s.repository.StoreWeeklyAvailability(ctx, scheduleId, wa)
-	return wa
 }
 
 func (s *ScheduleServiceImpl) GetAllTimeSlots(scheduleId int64) ([]*TimeSlot, error) {
