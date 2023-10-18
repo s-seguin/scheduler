@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -32,7 +34,70 @@ func NewSQLScheduleRepository(db *sql.DB) ScheduleRepository {
 	}
 }
 
+func dailyAvailabilityToString(da []*AvailabilityBlock) string {
+	var blocks []string
+	for _, block := range da {
+		blocks = append(blocks, fmt.Sprintf("%02d:%02d-%02d:%02d", block.StartHour, block.StartMin, block.EndHour, block.EndMin))
+	}
+
+	return strings.Join(blocks, ",")
+}
+
+// string should be in format "HH:MM-HH:MM,HH:MM-HH:MM"
+func parseDailyAvailability(availability string) ([]*AvailabilityBlock, error) {
+	if availability == "" {
+		return nil, nil
+	}
+
+	var availabilityBlocks []*AvailabilityBlock
+	blocks := strings.Split(availability, ",")
+
+	for _, block := range blocks {
+		times := strings.Split(block, "-")
+		if len(times) != 2 {
+			return nil, fmt.Errorf("invalid availability block: %s", block)
+		}
+
+		startTimes := strings.Split(times[0], ":")
+		if len(startTimes) != 2 {
+			return nil, fmt.Errorf("invalid availability block: %s", block)
+		}
+
+		endTimes := strings.Split(times[1], ":")
+		if len(endTimes) != 2 {
+			return nil, fmt.Errorf("invalid availability block: %s", block)
+		}
+
+		startHour, err := strconv.Atoi(startTimes[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid availability block: %s", block)
+		}
+		startMin, err := strconv.Atoi(startTimes[1])
+		if err != nil {
+			return nil, fmt.Errorf("invalid availability block: %s", block)
+		}
+		endHour, err := strconv.Atoi(endTimes[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid availability block: %s", block)
+		}
+		endMin, err := strconv.Atoi(endTimes[1])
+		if err != nil {
+			return nil, fmt.Errorf("invalid availability block: %s", block)
+		}
+
+		availabilityBlocks = append(availabilityBlocks, &AvailabilityBlock{
+			StartHour: startHour,
+			StartMin:  startMin,
+			EndHour:   endHour,
+			EndMin:    endMin,
+		})
+	}
+
+	return availabilityBlocks, nil
+}
+
 func (r *SQLScheduleRepository) FindAll(ctx context.Context) ([]*Schedule, error) {
+	// todo -- this is missing timeslots and bookings
 	rows, err := r.DB.QueryContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn FROM schedule`)
 	if err != nil {
 		return nil, err
@@ -80,9 +145,18 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 		SELECT 
 			s.id, 
 			s.name, 
+			s.timezone, 
+			s.timeSlotDurationMin,
+			s.sundayAvailability,
+			s.mondayAvailability,
+			s.tuesdayAvailability,
+			s.wednesdayAvailability,
+			s.thursdayAvailability,
+			s.fridayAvailability,
+			s.saturdayAvailability,
 			s.createdBy, 
 			s.createdOn, 
-			s.updatedOn, 
+			s.updatedOn,
 			t.id,
 			t.start,
 			t.end,
@@ -103,6 +177,16 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 
 	var scheduleId int64
 	var name string
+	var timezone string
+	var timeSlotDurationMin int64
+	var sundayAvailability string
+	var mondayAvailability string
+	var tuesdayAvailability string
+	var wednesdayAvailability string
+	var thursdayAvailability string
+	var fridayAvailability string
+	var saturdayAvailability string
+
 	var createdBy string
 	var createdOn string
 	var updatedOn string
@@ -128,7 +212,32 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 		var bookingCreatedOn sql.NullString
 		var bookingUpdatedOn sql.NullString
 
-		err := rows.Scan(&scheduleId, &name, &createdBy, &createdOn, &updatedOn, &timeSlotId, &start, &end, &tsCreatedOn, &tsUpdatedOn, &bookingId, &bookerName, &bookerEmail, &bookingCreatedOn, &bookingUpdatedOn)
+		err := rows.Scan(
+			&scheduleId,
+			&name,
+			&timezone,
+			&timeSlotDurationMin,
+			&sundayAvailability,
+			&mondayAvailability,
+			&tuesdayAvailability,
+			&wednesdayAvailability,
+			&thursdayAvailability,
+			&fridayAvailability,
+			&saturdayAvailability,
+			&createdBy,
+			&createdOn,
+			&updatedOn,
+			&timeSlotId,
+			&start,
+			&end,
+			&tsCreatedOn,
+			&tsUpdatedOn,
+			&bookingId,
+			&bookerName,
+			&bookerEmail,
+			&bookingCreatedOn,
+			&bookingUpdatedOn,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -206,91 +315,53 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 		continue
 	}
 
-	rows, err = r.DB.QueryContext(ctx, `SELECT day, startTime, endTime FROM availability WHERE scheduleId = ? ORDER BY startTime`, id)
+	sundayAvailabilityBlocks, err := parseDailyAvailability(sundayAvailability)
+	if err != nil {
+		return nil, err
+	}
+	mondayAvailabilityBlocks, err := parseDailyAvailability(mondayAvailability)
+	if err != nil {
+		return nil, err
+	}
+	tuesdayAvailabilityBlocks, err := parseDailyAvailability(tuesdayAvailability)
+	if err != nil {
+		return nil, err
+	}
+	wednesdayAvailabilityBlocks, err := parseDailyAvailability(wednesdayAvailability)
+	if err != nil {
+		return nil, err
+	}
+	thursdayAvailabilityBlocks, err := parseDailyAvailability(thursdayAvailability)
+	if err != nil {
+		return nil, err
+	}
+	fridayAvailabilityBlocks, err := parseDailyAvailability(fridayAvailability)
+	if err != nil {
+		return nil, err
+	}
+	saturdayAvailabilityBlocks, err := parseDailyAvailability(saturdayAvailability)
 	if err != nil {
 		return nil, err
 	}
 
-	var weeklyAvailability = &WeeklyAvailability{}
-
-	for rows.Next() {
-		var dayOfWeek int
-		var startTime string
-		var endTime string
-
-		err := rows.Scan(&dayOfWeek, &startTime, &endTime)
-		if err != nil {
-			return nil, err
-		}
-
-		// todo -- can we clean this up?
-		ab, err := NewAvailabilityBlockFromStrings(startTime, endTime)
-		if err != nil {
-			return nil, err
-		}
-
-		switch dayOfWeek {
-		case 0:
-			weeklyAvailability.Sunday = append(weeklyAvailability.Sunday, ab)
-		case 1:
-			weeklyAvailability.Monday = append(weeklyAvailability.Monday, ab)
-		case 2:
-			weeklyAvailability.Tuesday = append(weeklyAvailability.Tuesday, ab)
-		case 3:
-			weeklyAvailability.Wednesday = append(weeklyAvailability.Wednesday, ab)
-		case 4:
-			weeklyAvailability.Thursday = append(weeklyAvailability.Thursday, ab)
-		case 5:
-			weeklyAvailability.Friday = append(weeklyAvailability.Friday, ab)
-		case 6:
-			weeklyAvailability.Saturday = append(weeklyAvailability.Saturday, ab)
-		}
-	}
-
 	return &Schedule{
-		ID:                 scheduleId,
-		Name:               name,
-		CreatedBy:          createdBy,
-		CreatedOn:          createdOnTime,
-		UpdatedOn:          updatedOnTime,
-		TimeSlots:          timeslots,
-		WeeklyAvailability: weeklyAvailability,
+		ID:        scheduleId,
+		Name:      name,
+		CreatedBy: createdBy,
+		CreatedOn: createdOnTime,
+		UpdatedOn: updatedOnTime,
+		TimeSlots: timeslots,
+		WeeklyAvailability: &WeeklyAvailability{
+			Sunday:    sundayAvailabilityBlocks,
+			Monday:    mondayAvailabilityBlocks,
+			Tuesday:   tuesdayAvailabilityBlocks,
+			Wednesday: wednesdayAvailabilityBlocks,
+			Thursday:  thursdayAvailabilityBlocks,
+			Friday:    fridayAvailabilityBlocks,
+			Saturday:  saturdayAvailabilityBlocks,
+		},
 	}, nil
 }
-
-// func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedule, error) {
-// 	row := r.DB.QueryRowContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn FROM schedule WHERE id = ?`, id)
-
-// 	var scheduleId int64
-// 	var name string
-// 	var createdBy string
-// 	var createdOn string
-// 	var updatedOn string
-
-// 	err := row.Scan(&scheduleId, &name, &createdBy, &createdOn, &updatedOn)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	createdOnTime, err := time.Parse(r.dateLayout, createdOn)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	updatedOnTime, err := time.Parse(r.dateLayout, updatedOn)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return &Schedule{
-// 		ID:        scheduleId,
-// 		Name:      name,
-// 		CreatedBy: createdBy,
-// 		CreatedOn: createdOnTime,
-// 		UpdatedOn: updatedOnTime,
-// 	}, nil
-
-// }
 
 func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) error {
 	if schedule.ID != 0 {
@@ -298,13 +369,54 @@ func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) e
 		return err
 	}
 
+	sundayAvailability := dailyAvailabilityToString(schedule.WeeklyAvailability.Sunday)
+	mondayAvailability := dailyAvailabilityToString(schedule.WeeklyAvailability.Monday)
+	tuesdayAvailability := dailyAvailabilityToString(schedule.WeeklyAvailability.Tuesday)
+	wednesdayAvailability := dailyAvailabilityToString(schedule.WeeklyAvailability.Wednesday)
+	thursdayAvailability := dailyAvailabilityToString(schedule.WeeklyAvailability.Thursday)
+	fridayAvailability := dailyAvailabilityToString(schedule.WeeklyAvailability.Friday)
+	saturdayAvailability := dailyAvailabilityToString(schedule.WeeklyAvailability.Saturday)
+
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback() // defer rollback incase anything fails
 
-	res, err := r.DB.ExecContext(ctx, `INSERT INTO schedule (name, createdBy, createdOn, updatedOn) VALUES (?, ?, ?, ?)`, schedule.Name, schedule.CreatedBy, time.Now(), time.Now())
+	res, err := r.DB.ExecContext(ctx,
+		`INSERT INTO schedule (
+					name, 
+					start,
+					end,
+					timezone, 
+					timeslotDurationMin,
+					sundayAvailability, 
+					mondayAvailability, 
+					tuesdayAvailability, 
+					wednesdayAvailability, 
+					thursdayAvailability, 
+					fridayAvailability, 
+					saturdayAvailability, 
+					createdBy, 
+					createdOn, 
+					updatedOn
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		schedule.Name,
+		schedule.Start,
+		schedule.End,
+		schedule.Timezone,
+		schedule.TimeSlotDuration.Minutes(),
+		sundayAvailability,
+		mondayAvailability,
+		tuesdayAvailability,
+		wednesdayAvailability,
+		thursdayAvailability,
+		fridayAvailability,
+		saturdayAvailability,
+		schedule.CreatedBy,
+		time.Now(),
+		time.Now(),
+	)
 	if err != nil {
 		return err
 	}
@@ -312,21 +424,6 @@ func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) e
 	schedule.ID, err = res.LastInsertId()
 	if err != nil {
 		return err
-	}
-
-	// Store the weekly availability
-	for dayOfWeek := 0; dayOfWeek < 7; dayOfWeek++ {
-		dailyAvailability := schedule.WeeklyAvailability.GetAvailabilityForDay(time.Weekday(dayOfWeek))
-		for _, availabilityBlock := range dailyAvailability {
-			startTime := fmt.Sprintf("%02d:%02d", availabilityBlock.StartHour, availabilityBlock.StartMin)
-			endTime := fmt.Sprintf("%02d:%02d", availabilityBlock.EndHour, availabilityBlock.EndMin)
-
-			_, err := r.DB.ExecContext(ctx, `INSERT INTO availability (scheduleId, day, startTime, endTime, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?, ?)`, schedule.ID, dayOfWeek, startTime, endTime, time.Now(), time.Now())
-			if err != nil {
-				return err
-			}
-
-		}
 	}
 
 	for _, timeSlot := range schedule.TimeSlots {

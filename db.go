@@ -59,11 +59,6 @@ func Migrate(db *sql.DB) error {
 		return err
 	}
 
-	err = createAvailabilityTable(db)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -89,7 +84,15 @@ func createScheduleTable(db *sql.DB) error {
 			name TEXT,
 			start TEXT,
 			end TEXT,
-			timeSlotDuration INTEGER,
+			timeSlotDurationMin INTEGER,
+			timezone TEXT,
+			sundayAvailability TEXT,
+			mondayAvailability TEXT,
+			tuesdayAvailability TEXT,
+			wednesdayAvailability TEXT,
+			thursdayAvailability TEXT,
+			fridayAvailability TEXT,
+			saturdayAvailability TEXT,
 			createdOn TEXT,
 			updatedOn TEXT
 		);
@@ -127,22 +130,6 @@ func createBookingTable(db *sql.DB) error {
 		);
 
 
-	`)
-	return err
-}
-
-func createAvailabilityTable(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS availability (
-			id INTEGER NOT NULL PRIMARY KEY,
-			scheduleId INTEGER NOT NULL REFERENCES schedule(id) ON DELETE CASCADE,
-			day TEXT,
-			startTime TEXT,
-			endTime TEXT,
-			createdOn TEXT,
-			updatedOn TEXT,
-			UNIQUE(scheduleId, day, startTime, endTime)
-		);
 	`)
 	return err
 }

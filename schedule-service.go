@@ -165,13 +165,14 @@ func NewBooking(timeSlot *TimeSlot, bookerName string, bookerEmail string) *Book
 type Schedule struct {
 	ID                 int64               `json:"id"`
 	Name               string              `json:"name"`
+	Timezone           string              `json:"timezone"`
 	Start              time.Time           `json:"start"`
 	End                time.Time           `json:"end"`
 	TimeSlotDuration   time.Duration       `json:"timeSlotDuration"`
+	WeeklyAvailability *WeeklyAvailability `json:"weeklyAvailability"`
 	CreatedBy          string              `json:"createdBy"`
 	CreatedOn          time.Time           `json:"createdOn"`
 	UpdatedOn          time.Time           `json:"updatedOn"`
-	WeeklyAvailability *WeeklyAvailability `json:"weeklyAvailability"`
 	TimeSlots          []*TimeSlot         `json:"timeSlots"`
 }
 
@@ -182,6 +183,7 @@ func NewSchedule(name string, createdBy string, start time.Time, end time.Time, 
 		Start:              start,
 		End:                end,
 		TimeSlotDuration:   15 * time.Minute,
+		Timezone:           time.Local.String(),
 		WeeklyAvailability: weeklyAvailability,
 	}
 }
@@ -261,6 +263,7 @@ func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string, star
 	fmt.Println("Storing schedule")
 	err := s.repository.Store(ctx, schedule)
 	if err != nil {
+		fmt.Printf("Error storing schedule: %s", err)
 		return nil, err
 	}
 
