@@ -165,7 +165,7 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 		fmt.Printf("schedule %v\n", schedule)
 
 		// fmt.Printf("sundayStartTime %s sundayEndTime %s\nscheduleId %d", sundayStartTime, sundayEndTime, schedule.ID)
-		c.render.Text(w, http.StatusOK, "<h1 hx-get\"/schedules\" hx-trigger=\"delay:3s\">Schedule created!</h1>")
+		c.render.HTML(w, http.StatusOK, "schedule-created-partial", nil)
 	})
 
 	// c.router.Post("/create-schedule", func(w http.ResponseWriter, r *http.Request) {
