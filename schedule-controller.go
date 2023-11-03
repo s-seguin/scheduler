@@ -73,6 +73,16 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 			return
 		}
 
+		weeklyAvailability := WeeklyAvailability{
+			Sunday:    []*AvailabilityBlock{},
+			Monday:    []*AvailabilityBlock{},
+			Tuesday:   []*AvailabilityBlock{},
+			Wednesday: []*AvailabilityBlock{},
+			Thursday:  []*AvailabilityBlock{},
+			Friday:    []*AvailabilityBlock{},
+			Saturday:  []*AvailabilityBlock{},
+		}
+
 		sundayStartTime := r.FormValue("sundayStartTime")
 		sundayEndTime := r.FormValue("sundayEndTime")
 		mondayStartTime := r.FormValue("mondayStartTime")
@@ -112,6 +122,7 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 			return
 		}
 
+		fmt.Println("thursdayStartTime", thursdayStartTime, "thursdayEndTime", thursdayEndTime, thursdayEndTime == "")
 		thursdayAvailability, err := NewAvailabilityBlockFromStrings(thursdayStartTime, thursdayEndTime)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error parsing Thursday availability: %s", err), http.StatusBadRequest)
@@ -130,17 +141,18 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 			return
 		}
 
-		weeklyAvailability := WeeklyAvailability{
-			Sunday:    []*AvailabilityBlock{sundayAvailability},
-			Monday:    []*AvailabilityBlock{mondayAvailability},
-			Tuesday:   []*AvailabilityBlock{tuesdayAvailability},
-			Wednesday: []*AvailabilityBlock{wednesdayAvailability},
-			Thursday:  []*AvailabilityBlock{thursdayAvailability},
-			Friday:    []*AvailabilityBlock{fridayAvailability},
-			Saturday:  []*AvailabilityBlock{saturdayAvailability},
+		if sundayAvailability == nil && mondayAvailability == nil && tuesdayAvailability == nil && wednesdayAvailability == nil && thursdayAvailability == nil && fridayAvailability == nil && saturdayAvailability == nil {
+			http.Error(w, "You must provide at least one day of availability", http.StatusBadRequest)
+			return
 		}
 
-		// c.render.Text(w, http.StatusOK, fmt.Sprintf("form data %s %s %v %v %v", name, createdBy, start, end, weeklyAvailability))
+		weeklyAvailability.AddAvailabilityForDay(time.Sunday, sundayAvailability)
+		weeklyAvailability.AddAvailabilityForDay(time.Monday, mondayAvailability)
+		weeklyAvailability.AddAvailabilityForDay(time.Tuesday, tuesdayAvailability)
+		weeklyAvailability.AddAvailabilityForDay(time.Wednesday, wednesdayAvailability)
+		weeklyAvailability.AddAvailabilityForDay(time.Thursday, thursdayAvailability)
+		weeklyAvailability.AddAvailabilityForDay(time.Friday, fridayAvailability)
+		weeklyAvailability.AddAvailabilityForDay(time.Saturday, saturdayAvailability)
 
 		// fmt.Println("here")
 		schedule, err := c.scheduleService.CreateSchedule(name, createdBy, start, end, &weeklyAvailability)

@@ -31,6 +31,10 @@ func parseTime(time string) (int, int, error) {
 
 // todo -- should this belong to the Service?
 func NewAvailabilityBlockFromStrings(start string, end string) (*AvailabilityBlock, error) {
+	if start == "" && end == "" {
+		return nil, nil
+	}
+
 	startHour, startMin, err := parseTime(start)
 	if err != nil {
 		return nil, err
@@ -119,6 +123,29 @@ func (a *WeeklyAvailability) GetAvailabilityForDay(day time.Weekday) []*Availabi
 	}
 }
 
+func (a *WeeklyAvailability) AddAvailabilityForDay(day time.Weekday, availabilityBlock *AvailabilityBlock) {
+	if availabilityBlock == nil {
+		return
+	}
+
+	switch day {
+	case time.Sunday:
+		a.Sunday = append(a.Sunday, availabilityBlock)
+	case time.Monday:
+		a.Monday = append(a.Monday, availabilityBlock)
+	case time.Tuesday:
+		a.Tuesday = append(a.Tuesday, availabilityBlock)
+	case time.Wednesday:
+		a.Wednesday = append(a.Wednesday, availabilityBlock)
+	case time.Thursday:
+		a.Thursday = append(a.Thursday, availabilityBlock)
+	case time.Friday:
+		a.Friday = append(a.Friday, availabilityBlock)
+	case time.Saturday:
+		a.Saturday = append(a.Saturday, availabilityBlock)
+	}
+}
+
 type TimeSlot struct {
 	ID        int64     `json:"id"`
 	Start     time.Time `json:"start"`
@@ -201,32 +228,26 @@ func (s *Schedule) AddWeeklyAvailability(weeklyAvailability *WeeklyAvailability)
 }
 
 func (s *Schedule) GenerateTimeSlots() {
-	current := s.Start
-
-	for current.Before(s.End) {
-		fmt.Println("current", current, current.Weekday())
+	fmt.Println("Generating timeslots")
+	for current := s.Start; current.Before(s.End); current = current.AddDate(0, 0, 1) {
+		fmt.Println("Generating timeslots for", current.Format("Monday, 2006-01-02"))
 		availability := s.WeeklyAvailability.GetAvailabilityForDay(current.Weekday())
-		fmt.Println("len availability", len(availability))
 		if len(availability) == 0 {
-			fmt.Println("no availability")
+			fmt.Println("No availability for", current.Format("Monday"))
 			continue
 		}
-		fmt.Println("availability", availability)
+
 		for _, a := range availability {
-			fmt.Println("a", a)
+			fmt.Println("Availability: ", a.StartHour, a.StartMin, a.EndHour, a.EndMin)
 			start := time.Date(current.Year(), current.Month(), current.Day(), a.StartHour, a.StartMin, 0, 0, time.Local)
 			end := time.Date(current.Year(), current.Month(), current.Day(), a.EndHour, a.EndMin, 0, 0, time.Local)
 
-			fmt.Println("end", end)
-			fmt.Println("duration", s.TimeSlotDuration)
 			for start.Before(end) {
-				fmt.Println("start", start)
 				timeSlot := NewTimeSlot(start, start.Add(s.TimeSlotDuration))
 				s.AddTimeSlot(timeSlot)
 				start = start.Add(s.TimeSlotDuration)
 			}
 		}
-		current = current.AddDate(0, 0, 1)
 	}
 }
 
@@ -254,7 +275,6 @@ func NewScheduleService(repository ScheduleRepository) ScheduleService {
 func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability) (*Schedule, error) {
 	fmt.Println("Creating schedule")
 	schedule := NewSchedule(name, createdBy, start, end, weeklyAvailability)
-	fmt.Println("Generating timeslots")
 	schedule.GenerateTimeSlots()
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
