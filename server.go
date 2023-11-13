@@ -112,7 +112,7 @@ func (s *Server) MountAuthRoutes() {
 
 		fmt.Printf("profile: %+v\n", profile)
 
-		http.Redirect(w, r, "/schedules", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 	})
 
 	s.Router.Get("/logout", func(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +138,15 @@ func (s *Server) MountAuthRoutes() {
 		params.Add("client_id", os.Getenv("AUTH0_CLIENT_ID"))
 		logoutUrl.RawQuery = params.Encode()
 
+		// destroy the session
+		session, _ := s.Store.Get(r, "auth-session")
+		session.Options.MaxAge = -1
+		err = session.Save(r, w)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 	})
 }
@@ -158,19 +167,6 @@ func (s *Server) ServeStatic(path string, root http.FileSystem) {
 		pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
 		fs := http.StripPrefix(pathPrefix, http.FileServer(root))
 		fs.ServeHTTP(w, r)
-	})
-}
-
-func (s *Server) IsAuthenticated(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, _ := s.Store.Get(r, "auth-session")
-
-		if session.Values["profile"] == nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		next.ServeHTTP(w, r)
 	})
 }
 
