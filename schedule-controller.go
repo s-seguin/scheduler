@@ -16,6 +16,7 @@ import (
 
 type ScheduleController interface {
 	MountRoutes() *chi.Mux
+	UseMiddleware(middleware func(http.Handler) http.Handler)
 	Index(w http.ResponseWriter, r *http.Request)
 }
 
@@ -281,6 +282,9 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 	return c.router
 }
 
+func (c *ScheduleControllerImpl) UseMiddleware(middleware func(http.Handler) http.Handler) {
+	c.router.Use(middleware)
+}
 func dayHasTimeSlot(day time.Time, timeslots []*TimeSlot) bool {
 	for _, timeslot := range timeslots {
 		if timeslot.Start.Year() != day.Year() && timeslot.End.Year() != day.Year() {
