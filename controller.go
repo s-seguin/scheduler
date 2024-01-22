@@ -82,7 +82,10 @@ func dayHasTimeSlot(day time.Time, timeslots []*TimeSlot) bool {
 }
 
 type SchedulesViewModel struct {
-	Schedules []*Schedule
+	Schedules      []*Schedule
+	AuthorEmail    string
+	AuthorName     string
+	AuthorNickname string
 }
 
 type TimeSlotBookingViewModel struct {
@@ -105,18 +108,29 @@ type NullableTime struct {
 }
 
 func (c *ControllerImpl) getSchedules(w http.ResponseWriter, r *http.Request) {
-	schedules, err := c.scheduleService.FindAll()
+	session, _ := c.cookieStore.Get(r, "auth-session")
+	profile := session.Values["profile"]
+	createdBy := profile.(map[string]interface{})["sub"].(string)
+
+	schedules, err := c.scheduleService.FindAll(createdBy)
 	if err != nil {
 		http.Error(w, "Error getting schedules", http.StatusInternalServerError)
 		return
 	}
 
-	c.render.HTML(w, http.StatusOK, "schedules", &SchedulesViewModel{schedules})
+	email := profile.(map[string]interface{})["email"].(string)
+	name := profile.(map[string]interface{})["name"].(string)
+	nickname := profile.(map[string]interface{})["nickname"].(string)
+
+	c.render.HTML(w, http.StatusOK, "schedules", &SchedulesViewModel{schedules, email, name, nickname})
 }
 
 func (c *ControllerImpl) createSchedule(w http.ResponseWriter, r *http.Request) {
+	session, _ := c.cookieStore.Get(r, "auth-session")
+	profile := session.Values["profile"]
+	createdBy := profile.(map[string]interface{})["sub"].(string)
+
 	name := r.FormValue("name")
-	createdBy := r.FormValue("createdBy")
 	startDate := r.FormValue("startDate")
 	endDate := r.FormValue("endDate")
 

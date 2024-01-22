@@ -12,7 +12,7 @@ import (
 // todo -- use context for all methods
 
 type ScheduleRepository interface {
-	FindAll(ctx context.Context) ([]*Schedule, error)
+	FindAll(ctx context.Context, createdBy string) ([]*Schedule, error)
 	FindById(ctx context.Context, id int64) (*Schedule, error)
 	Store(ctx context.Context, schedule *Schedule) error
 	Update(ctx context.Context, scheduleId *Schedule) error
@@ -96,9 +96,9 @@ func parseDailyAvailability(availability string) ([]*AvailabilityBlock, error) {
 	return availabilityBlocks, nil
 }
 
-func (r *SQLScheduleRepository) FindAll(ctx context.Context) ([]*Schedule, error) {
+func (r *SQLScheduleRepository) FindAll(ctx context.Context, createdBy string) ([]*Schedule, error) {
 	// todo -- this is missing timeslots and bookings
-	rows, err := r.DB.QueryContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn FROM schedule`)
+	rows, err := r.DB.QueryContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn FROM schedule WHERE createdBy = ?`, createdBy)
 	if err != nil {
 		return nil, err
 	}

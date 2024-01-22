@@ -36,9 +36,9 @@ func main() {
 
 	scheduleRepository := NewSQLScheduleRepository(db)
 	scheduleService := NewScheduleService(scheduleRepository)
-	scheduleController := NewController(scheduleService, server.Store)
+	controller := NewController(scheduleService, server.Store)
 
 	server.ServeStatic("/static", http.Dir("./public/static"))
-	server.MountRouter("/", scheduleController.MountRoutes())
+	server.MountRouter("/", controller.MountRoutes())
 	server.Start()
 }

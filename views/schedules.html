@@ -4,6 +4,7 @@
 
 <body>
     <div>
+        <p>{{.AuthorEmail}}</p>
         <h3>Schedules</h3>
         <ul>
             {{range .Schedules}}
@@ -21,8 +22,6 @@
             <div>
                 <label for="name">Name</label>
                 <input type="text" name="name" placeholder="Schedule Name" />
-                <label for="createdBy">Created By</label>
-                <input type="text" name="createdBy" placeholder="Created By" />
             </div>
             <label for="startDate">Start Date</label>
             <input type="date" name="startDate" placeholder="Start Date" />

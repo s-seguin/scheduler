@@ -255,7 +255,7 @@ type ScheduleService interface {
 	CreateSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability) (*Schedule, error)
 	GetAllTimeSlots(scheduleId int64) ([]*TimeSlot, error)
 	GetTimeSlotsWithinRange(scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error)
-	FindAll() ([]*Schedule, error)
+	FindAll(createdBy string) ([]*Schedule, error)
 	FindById(id int64) (*Schedule, error)
 	BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (bookingId int64, err error)
 }
@@ -290,11 +290,11 @@ func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string, star
 	return schedule, nil
 }
 
-func (s *ScheduleServiceImpl) FindAll() ([]*Schedule, error) {
+func (s *ScheduleServiceImpl) FindAll(createdBy string) ([]*Schedule, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
 	defer cancel()
 
-	return s.repository.FindAll(ctx)
+	return s.repository.FindAll(ctx, createdBy)
 }
 
 func (s *ScheduleServiceImpl) FindById(id int64) (*Schedule, error) {
