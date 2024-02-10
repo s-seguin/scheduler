@@ -43,8 +43,8 @@ func NewController(scheduleService ScheduleService, cookieStore *sessions.Cookie
 
 func (c *ControllerImpl) MountRoutes() *chi.Mux {
 	c.router.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		session, _ := c.cookieStore.Get(r, "auth-session")
-		if !hasProfileOnSession(session) {
+		profile, err := getAuth0Profile(r)
+		if err != nil || profile.IsExpired() {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
@@ -82,10 +82,8 @@ func dayHasTimeSlot(day time.Time, timeslots []*TimeSlot) bool {
 }
 
 type SchedulesViewModel struct {
-	Schedules      []*Schedule
-	AuthorEmail    string
-	AuthorName     string
-	AuthorNickname string
+	Schedules []*Schedule
+	User      Auth0Profile
 }
 
 type TimeSlotBookingViewModel struct {
@@ -108,9 +106,8 @@ type NullableTime struct {
 }
 
 func (c *ControllerImpl) getSchedules(w http.ResponseWriter, r *http.Request) {
-	session, _ := c.cookieStore.Get(r, "auth-session")
-	profile := session.Values["profile"]
-	createdBy := profile.(map[string]interface{})["sub"].(string)
+	auth0Profile, _ := getAuth0Profile(r) // since this is a protected route, we can assume the profile is there
+	createdBy := auth0Profile.Sub
 
 	schedules, err := c.scheduleService.FindAll(createdBy)
 	if err != nil {
@@ -118,17 +115,12 @@ func (c *ControllerImpl) getSchedules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	email := profile.(map[string]interface{})["email"].(string)
-	name := profile.(map[string]interface{})["name"].(string)
-	nickname := profile.(map[string]interface{})["nickname"].(string)
-
-	c.render.HTML(w, http.StatusOK, "schedules", &SchedulesViewModel{schedules, email, name, nickname})
+	c.render.HTML(w, http.StatusOK, "schedules", &SchedulesViewModel{schedules, auth0Profile})
 }
 
 func (c *ControllerImpl) createSchedule(w http.ResponseWriter, r *http.Request) {
-	session, _ := c.cookieStore.Get(r, "auth-session")
-	profile := session.Values["profile"]
-	createdBy := profile.(map[string]interface{})["sub"].(string)
+	auth0Profile, _ := getAuth0Profile(r) // since this is a protected route, we can assume the profile is there
+	createdBy := auth0Profile.Sub
 
 	name := r.FormValue("name")
 	startDate := r.FormValue("startDate")
@@ -348,9 +340,8 @@ func (c *ControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Request) {
 
 func (c *ControllerImpl) isAuthenticated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, _ := c.cookieStore.Get(r, "auth-session")
-
-		if !hasProfileOnSession(session) {
+		profile, err := getAuth0Profile(r)
+		if err != nil || profile.IsExpired() {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -359,6 +350,10 @@ func (c *ControllerImpl) isAuthenticated(next http.Handler) http.Handler {
 	})
 }
 
-func hasProfileOnSession(session *sessions.Session) bool {
-	return session.Values["profile"] != nil
+func getAuth0Profile(r *http.Request) (Auth0Profile, error) {
+	profile, ok := r.Context().Value(RequestContextKey("profile")).(Auth0Profile)
+	if !ok {
+		return profile, fmt.Errorf("profile not found in context")
+	}
+	return profile, nil
 }

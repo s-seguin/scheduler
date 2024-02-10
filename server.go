@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/gob"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"scheduler/auth"
 
@@ -44,14 +46,37 @@ func NewServer() (*Server, error) {
 
 func (s *Server) SetupMiddleware() {
 	s.Router.Use(middleware.Logger)
+	s.Router.Use(s.addUserToContext)
 }
 
 func (s *Server) MountRouter(path string, router *chi.Mux) {
 	s.Router.Mount(path, router)
 }
 
+type Auth0Profile struct {
+	Email         string    `json:"email"`
+	EmailVerified bool      `json:"email_verified"`
+	Name          string    `json:"name"`
+	FamilyName    string    `json:"family_name"`
+	GivenName     string    `json:"given_name"`
+	Nickname      string    `json:"nickname"`
+	Picture       string    `json:"picture"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	Sub           string    `json:"sub"`
+	Expiry        int64     `json:"exp"`
+	Iat           int64     `json:"iat"`
+	Locale        string    `json:"locale"`
+	Iss           string    `json:"iss"`
+}
+
+func (ap Auth0Profile) IsExpired() bool {
+	exp := time.UnixMicro(ap.Expiry)
+	fmt.Printf("exp: %+v\n", exp)
+	return time.Now().After(exp)
+}
+
 func (s *Server) MountAuthRoutes() {
-	gob.Register(map[string]interface{}{}) // Register the map needed for storing and retrieving the profile
+	gob.Register(Auth0Profile{})
 
 	s.Router.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		// todo should we use crypto/rand
@@ -96,7 +121,7 @@ func (s *Server) MountAuthRoutes() {
 			return
 		}
 
-		var profile map[string]interface{}
+		var profile Auth0Profile
 		err = idToken.Claims(&profile)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -168,6 +193,25 @@ func (s *Server) ServeStatic(path string, root http.FileSystem) {
 		pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
 		fs := http.StripPrefix(pathPrefix, http.FileServer(root))
 		fs.ServeHTTP(w, r)
+	})
+}
+
+// fixme -- define this somewhere better
+type RequestContextKey string
+
+func (s *Server) addUserToContext(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session, _ := s.Store.Get(r, "auth-session")
+		profile := session.Values["profile"]
+
+		// todo -- we should probably check the expiry here
+		if profile != nil {
+			ctx := context.WithValue(r.Context(), RequestContextKey("profile"), profile)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }
 
