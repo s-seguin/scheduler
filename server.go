@@ -51,6 +51,8 @@ func (s *Server) MountRouter(path string, router *chi.Mux) {
 }
 
 func (s *Server) MountAuthRoutes() {
+	gob.Register(map[string]interface{}{}) // Register the map needed for storing and retrieving the profile
+
 	s.Router.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		// todo should we use crypto/rand
 		randBytes := make([]byte, 32)
@@ -95,7 +97,6 @@ func (s *Server) MountAuthRoutes() {
 		}
 
 		var profile map[string]interface{}
-		gob.Register(map[string]interface{}{})
 		err = idToken.Claims(&profile)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
