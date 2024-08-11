@@ -64,6 +64,7 @@ func (c *ControllerImpl) MountRoutes() *chi.Mux {
 	return c.router
 }
 
+// todo -- should this belong to the service?
 func dayHasTimeSlot(day time.Time, timeslots []*TimeSlot) bool {
 	for _, timeslot := range timeslots {
 		if timeslot.Start.Year() != day.Year() && timeslot.End.Year() != day.Year() {
