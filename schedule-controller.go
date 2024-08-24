@@ -14,18 +14,18 @@ import (
 	"github.com/unrolled/render"
 )
 
-type Controller interface {
+type ScheduleController interface {
 	MountRoutes() *chi.Mux
 }
 
-type ControllerImpl struct {
+type ScheduleControllerImpl struct {
 	scheduleService ScheduleService
 	render          *render.Render
 	router          *chi.Mux
 	cookieStore     *sessions.CookieStore
 }
 
-func NewController(scheduleService ScheduleService, cookieStore *sessions.CookieStore) Controller {
+func NewScheduleController(scheduleService ScheduleService, cookieStore *sessions.CookieStore) ScheduleController {
 	renderFuncMap := template.FuncMap{
 		"mod": func(i int, x int) int {
 			return i % x
@@ -33,7 +33,7 @@ func NewController(scheduleService ScheduleService, cookieStore *sessions.Cookie
 	funcs := []template.FuncMap{renderFuncMap}
 	render := render.New(render.Options{Extensions: []string{".html"}, Directory: "views", Funcs: funcs})
 
-	return &ControllerImpl{
+	return &ScheduleControllerImpl{
 		scheduleService: scheduleService,
 		render:          render,
 		router:          chi.NewRouter(),
@@ -41,9 +41,10 @@ func NewController(scheduleService ScheduleService, cookieStore *sessions.Cookie
 	}
 }
 
-func (c *ControllerImpl) MountRoutes() *chi.Mux {
+func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 	c.router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		profile, err := getAuth0Profile(r)
+
 		if err != nil || profile.IsExpired() {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
@@ -106,7 +107,7 @@ type NullableTime struct {
 	IsThisMonth             bool
 }
 
-func (c *ControllerImpl) getSchedules(w http.ResponseWriter, r *http.Request) {
+func (c *ScheduleControllerImpl) getSchedules(w http.ResponseWriter, r *http.Request) {
 	auth0Profile, _ := getAuth0Profile(r) // since this is a protected route, we can assume the profile is there
 	createdBy := auth0Profile.Sub
 
@@ -119,7 +120,7 @@ func (c *ControllerImpl) getSchedules(w http.ResponseWriter, r *http.Request) {
 	c.render.HTML(w, http.StatusOK, "schedules", &SchedulesViewModel{schedules, auth0Profile})
 }
 
-func (c *ControllerImpl) createSchedule(w http.ResponseWriter, r *http.Request) {
+func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.Request) {
 	auth0Profile, _ := getAuth0Profile(r) // since this is a protected route, we can assume the profile is there
 	createdBy := auth0Profile.Sub
 
@@ -234,7 +235,7 @@ func (c *ControllerImpl) createSchedule(w http.ResponseWriter, r *http.Request) 
 	c.render.HTML(w, http.StatusOK, "schedule-created-partial", nil)
 }
 
-func (c *ControllerImpl) getScheduleById(w http.ResponseWriter, r *http.Request) {
+func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.Request) {
 	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
 	if err != nil {
 		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
@@ -274,7 +275,7 @@ func (c *ControllerImpl) getScheduleById(w http.ResponseWriter, r *http.Request)
 	c.render.HTML(w, http.StatusOK, "schedule", &ScheduleViewModel{Schedule: schedule, Date: date, NextMonth: startOfNextMonth, PreviousMonth: startOfMonth.AddDate(0, 0, -1), Days: days})
 }
 
-func (c *ControllerImpl) getBookingForm(w http.ResponseWriter, r *http.Request) {
+func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.Request) {
 	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
 	if err != nil {
 		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
@@ -317,7 +318,7 @@ func (c *ControllerImpl) getBookingForm(w http.ResponseWriter, r *http.Request) 
 	c.render.HTML(w, http.StatusOK, "booking-form", &TimeSlotBookingViewModel{TimeSlot: timeslot, Schedule: schedule})
 }
 
-func (c *ControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Request) {
+func (c *ScheduleControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Request) {
 	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
 	if err != nil {
 		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
@@ -339,7 +340,7 @@ func (c *ControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Request) {
 	c.render.Text(w, http.StatusOK, fmt.Sprintf("Booking successful! Your booking ID is %d <button hx-get=\"/schedules/%d\" hx-target=\"#scheduleContainer\">Return to schedule</button>", bookingId, scheduleId))
 }
 
-func (c *ControllerImpl) isAuthenticated(next http.Handler) http.Handler {
+func (c *ScheduleControllerImpl) isAuthenticated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		profile, err := getAuth0Profile(r)
 		if err != nil || profile.IsExpired() {

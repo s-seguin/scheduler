@@ -70,8 +70,7 @@ type Auth0Profile struct {
 }
 
 func (ap Auth0Profile) IsExpired() bool {
-	exp := time.UnixMicro(ap.Expiry)
-	fmt.Printf("exp: %+v\n", exp)
+	exp := time.Unix(ap.Expiry, 0)
 	return time.Now().After(exp)
 }
 
