@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi"
@@ -150,80 +151,43 @@ func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.R
 		Saturday:  []*AvailabilityBlock{},
 	}
 
-	sundayStartTime := r.FormValue("sundayStartTime")
-	sundayEndTime := r.FormValue("sundayEndTime")
-	mondayStartTime := r.FormValue("mondayStartTime")
-	mondayEndTime := r.FormValue("mondayEndTime")
-	tuesdayStartTime := r.FormValue("tuesdayStartTime")
-	tuesdayEndTime := r.FormValue("tuesdayEndTime")
-	wednesdayStartTime := r.FormValue("wednesdayStartTime")
-	wednesdayEndTime := r.FormValue("wednesdayEndTime")
-	thursdayStartTime := r.FormValue("thursdayStartTime")
-	thursdayEndTime := r.FormValue("thursdayEndTime")
-	fridayStartTime := r.FormValue("fridayStartTime")
-	fridayEndTime := r.FormValue("fridayEndTime")
-	saturdayStartTime := r.FormValue("saturdayStartTime")
-	saturdayEndTime := r.FormValue("saturdayEndTime")
-
-	sundayAvailability, err := NewAvailabilityBlockFromStrings(sundayStartTime, sundayEndTime)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error parsing Sunday availability: %s", err), http.StatusBadRequest)
-		return
+	daysOfWeek := []time.Weekday{
+		time.Sunday,
+		time.Monday,
+		time.Tuesday,
+		time.Wednesday,
+		time.Thursday,
+		time.Friday,
+		time.Saturday,
 	}
 
-	mondayAvailability, err := NewAvailabilityBlockFromStrings(mondayStartTime, mondayEndTime)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error parsing Monday availability: %s", err), http.StatusBadRequest)
-		return
+	hasAtLeastOneAvailability := false
+	for _, day := range daysOfWeek {
+		dayStr := strings.ToLower(day.String())
+		startTimeKey := fmt.Sprintf("%sStartTime", dayStr)
+		endTimeKey := fmt.Sprintf("%sEndTime", dayStr)
+
+		startTime := r.FormValue(startTimeKey)
+		endTime := r.FormValue(endTimeKey)
+
+		availabilityBlock, err := NewAvailabilityBlockFromStrings(startTime, endTime)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error parsing %s availability: %s", day, err), http.StatusBadRequest)
+			return
+		}
+
+		if availabilityBlock != nil {
+			hasAtLeastOneAvailability = true
+			weeklyAvailability.AddAvailabilityForDay(day, availabilityBlock)
+		}
 	}
 
-	tuesdayAvailability, err := NewAvailabilityBlockFromStrings(tuesdayStartTime, tuesdayEndTime)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error parsing Tuesday availability: %s", err), http.StatusBadRequest)
-		return
-	}
-
-	wednesdayAvailability, err := NewAvailabilityBlockFromStrings(wednesdayStartTime, wednesdayEndTime)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error parsing Wednesday availability: %s", err), http.StatusBadRequest)
-		return
-	}
-
-	fmt.Println("thursdayStartTime", thursdayStartTime, "thursdayEndTime", thursdayEndTime, thursdayEndTime == "")
-	thursdayAvailability, err := NewAvailabilityBlockFromStrings(thursdayStartTime, thursdayEndTime)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error parsing Thursday availability: %s", err), http.StatusBadRequest)
-		return
-	}
-
-	fridayAvailability, err := NewAvailabilityBlockFromStrings(fridayStartTime, fridayEndTime)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error parsing Friday availability: %s", err), http.StatusBadRequest)
-		return
-	}
-
-	saturdayAvailability, err := NewAvailabilityBlockFromStrings(saturdayStartTime, saturdayEndTime)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error parsing Saturday availability: %s", err), http.StatusBadRequest)
-		return
-	}
-
-	if sundayAvailability == nil && mondayAvailability == nil && tuesdayAvailability == nil && wednesdayAvailability == nil && thursdayAvailability == nil && fridayAvailability == nil && saturdayAvailability == nil {
+	if !hasAtLeastOneAvailability {
 		http.Error(w, "You must provide at least one day of availability", http.StatusBadRequest)
 		return
 	}
 
-	weeklyAvailability.AddAvailabilityForDay(time.Sunday, sundayAvailability)
-	weeklyAvailability.AddAvailabilityForDay(time.Monday, mondayAvailability)
-	weeklyAvailability.AddAvailabilityForDay(time.Tuesday, tuesdayAvailability)
-	weeklyAvailability.AddAvailabilityForDay(time.Wednesday, wednesdayAvailability)
-	weeklyAvailability.AddAvailabilityForDay(time.Thursday, thursdayAvailability)
-	weeklyAvailability.AddAvailabilityForDay(time.Friday, fridayAvailability)
-	weeklyAvailability.AddAvailabilityForDay(time.Saturday, saturdayAvailability)
-
-	// fmt.Println("here")
 	schedule, err := c.scheduleService.CreateSchedule(name, createdBy, start, end, &weeklyAvailability)
-	// fmt.Println("ici")
 	if err != nil {
 		http.Error(w, "Error creating schedule", http.StatusInternalServerError)
 		return
@@ -311,7 +275,7 @@ func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.R
 
 	// todo -- return HTML instead
 	if !timeslot.IsAvailable() {
-		http.Error(w, "Timeslot is not available", http.StatusNotFound)
+		http.Error(w, "Timeslot is not available", http.StatusBadRequest)
 		return
 	}
 
