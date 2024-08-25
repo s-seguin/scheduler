@@ -20,6 +20,8 @@ type ScheduleRepository interface {
 	GetAllTimeSlots(ctx context.Context, scheduleId int64) ([]*TimeSlot, error)
 	GetTimeSlotsWithinRange(ctx context.Context, scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error)
 	BookTimeSlot(ctx context.Context, scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) (bookingId int64, err error)
+	GetBookings(ctx context.Context, scheduleId int64) ([]*Booking, error)
+	GetBookingsForUser(ctx context.Context, scheduleId int64, bookerEmail string) ([]*Booking, error)
 }
 
 type SQLScheduleRepository struct {
@@ -98,7 +100,7 @@ func parseDailyAvailability(availability string) ([]*AvailabilityBlock, error) {
 
 func (r *SQLScheduleRepository) FindAll(ctx context.Context, createdBy string) ([]*Schedule, error) {
 	// todo -- this is missing timeslots and bookings
-	rows, err := r.DB.QueryContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn FROM schedule WHERE createdBy = ?`, createdBy)
+	rows, err := r.DB.QueryContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn, limitToOneBookingPerUser FROM schedule WHERE createdBy = ?`, createdBy)
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +114,9 @@ func (r *SQLScheduleRepository) FindAll(ctx context.Context, createdBy string) (
 		var createdBy string
 		var createdOn string
 		var updatedOn string
+		var limitToOneBookingPerUser bool
 
-		err := rows.Scan(&scheduleId, &name, &createdBy, &createdOn, &updatedOn)
+		err := rows.Scan(&scheduleId, &name, &createdBy, &createdOn, &updatedOn, &limitToOneBookingPerUser)
 		if err != nil {
 			return nil, err
 		}
@@ -129,11 +132,12 @@ func (r *SQLScheduleRepository) FindAll(ctx context.Context, createdBy string) (
 		}
 
 		schedules = append(schedules, &Schedule{
-			ID:        scheduleId,
-			Name:      name,
-			CreatedBy: createdBy,
-			CreatedOn: createdOnTime,
-			UpdatedOn: updatedOnTime,
+			ID:                       scheduleId,
+			Name:                     name,
+			CreatedBy:                createdBy,
+			CreatedOn:                createdOnTime,
+			UpdatedOn:                updatedOnTime,
+			LimitToOneBookingPerUser: limitToOneBookingPerUser,
 		})
 	}
 
@@ -147,6 +151,7 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 			s.name, 
 			s.timezone, 
 			s.timeSlotDurationMin,
+			s.limitToOneBookingPerUser,
 			s.sundayAvailability,
 			s.mondayAvailability,
 			s.tuesdayAvailability,
@@ -179,6 +184,7 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 	var name string
 	var timezone string
 	var timeSlotDurationMin int64
+	var limitToOneBookingPerUser bool
 	var sundayAvailability string
 	var mondayAvailability string
 	var tuesdayAvailability string
@@ -217,6 +223,7 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 			&name,
 			&timezone,
 			&timeSlotDurationMin,
+			&limitToOneBookingPerUser,
 			&sundayAvailability,
 			&mondayAvailability,
 			&tuesdayAvailability,
@@ -345,12 +352,13 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 	}
 
 	return &Schedule{
-		ID:        scheduleId,
-		Name:      name,
-		CreatedBy: createdBy,
-		CreatedOn: createdOnTime,
-		UpdatedOn: updatedOnTime,
-		TimeSlots: timeslots,
+		ID:                       scheduleId,
+		Name:                     name,
+		CreatedBy:                createdBy,
+		CreatedOn:                createdOnTime,
+		UpdatedOn:                updatedOnTime,
+		LimitToOneBookingPerUser: limitToOneBookingPerUser,
+		TimeSlots:                timeslots,
 		WeeklyAvailability: &WeeklyAvailability{
 			Sunday:    sundayAvailabilityBlocks,
 			Monday:    mondayAvailabilityBlocks,
@@ -390,6 +398,7 @@ func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) e
 					end,
 					timezone, 
 					timeslotDurationMin,
+					limitToOneBookingPerUser,
 					sundayAvailability, 
 					mondayAvailability, 
 					tuesdayAvailability, 
@@ -400,12 +409,13 @@ func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) e
 					createdBy, 
 					createdOn, 
 					updatedOn
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		schedule.Name,
 		schedule.Start,
 		schedule.End,
 		schedule.Timezone,
 		schedule.TimeSlotDuration.Minutes(),
+		schedule.LimitToOneBookingPerUser,
 		sundayAvailability,
 		mondayAvailability,
 		tuesdayAvailability,
@@ -636,4 +646,135 @@ func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int
 	}
 
 	return bookingId, nil
+}
+
+func (r *SQLScheduleRepository) GetBookings(ctx context.Context, scheduleId int64) ([]*Booking, error) {
+	rows, err := r.DB.QueryContext(ctx,
+		`SELECT 
+			b.id,
+			b.bookerName,
+			b.bookerEmail,
+			b.createdOn,
+			b.updatedOn,
+			t.id,
+			t.start,
+			t.end,
+			t.createdOn,
+			t.updatedOn
+		FROM booking AS b
+		LEFT OUTER JOIN timeSlot AS t
+		ON b.timeSlotId = t.id
+		WHERE t.scheduleId = ?`, scheduleId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return r.parseBookingSqlRows(rows)
+}
+
+func (r *SQLScheduleRepository) GetBookingsForUser(ctx context.Context, scheduleId int64, bookerEmail string) ([]*Booking, error) {
+	rows, err := r.DB.QueryContext(ctx,
+		`SELECT 
+			b.id,
+			b.bookerName,
+			b.bookerEmail,
+			b.createdOn,
+			b.updatedOn,
+			t.id,
+			t.start,
+			t.end,
+			t.createdOn,
+			t.updatedOn
+		FROM booking AS b
+		LEFT OUTER JOIN timeSlot AS t
+		ON b.timeSlotId = t.id
+		WHERE t.scheduleId = ? AND b.bookerEmail = ?`, scheduleId, bookerEmail)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return r.parseBookingSqlRows(rows)
+}
+
+func (r *SQLScheduleRepository) parseBookingSqlRows(rows *sql.Rows) ([]*Booking, error) {
+	var bookings []*Booking
+
+	for rows.Next() {
+		var bookingId int64
+		var bookerName string
+		var bookerEmail string
+		var createdOn string
+		var updatedOn string
+
+		var timeSlotId sql.NullInt64
+		var start string
+		var end string
+		var timeSlotCreatedOn string
+		var timeSlotUpdatedOn string
+
+		err := rows.Scan(&bookingId, &bookerName, &bookerEmail, &createdOn, &updatedOn, &timeSlotId, &start, &end, &timeSlotCreatedOn, &timeSlotUpdatedOn)
+		if err != nil {
+			return nil, err
+		}
+
+		createdOnTime, err := time.Parse(r.dateLayout, createdOn)
+		if err != nil {
+			return nil, err
+		}
+
+		updatedOnTime, err := time.Parse(r.dateLayout, updatedOn)
+		if err != nil {
+			return nil, err
+		}
+
+		if !timeSlotId.Valid {
+			bookings = append(bookings, &Booking{
+				ID:          bookingId,
+				BookerName:  bookerName,
+				BookerEmail: bookerEmail,
+				CreatedOn:   createdOnTime,
+				UpdatedOn:   updatedOnTime,
+			})
+			continue
+		}
+
+		startTime, err := time.Parse(r.dateLayout, start)
+		if err != nil {
+			return nil, err
+		}
+
+		endTime, err := time.Parse(r.dateLayout, end)
+		if err != nil {
+			return nil, err
+		}
+
+		timeSlotCreatedOnTime, err := time.Parse(r.dateLayout, timeSlotCreatedOn)
+		if err != nil {
+			return nil, err
+		}
+
+		timeSlotUpdatedOnTime, err := time.Parse(r.dateLayout, timeSlotUpdatedOn)
+		if err != nil {
+			return nil, err
+		}
+
+		bookings = append(bookings, &Booking{
+			ID:          bookingId,
+			BookerName:  bookerName,
+			BookerEmail: bookerEmail,
+			CreatedOn:   createdOnTime,
+			UpdatedOn:   updatedOnTime,
+			TimeSlot: &TimeSlot{
+				ID:        timeSlotId.Int64,
+				Start:     startTime,
+				End:       endTime,
+				CreatedOn: timeSlotCreatedOnTime,
+				UpdatedOn: timeSlotUpdatedOnTime,
+			},
+		})
+	}
+
+	return bookings, nil
 }

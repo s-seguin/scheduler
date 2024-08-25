@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -187,7 +188,9 @@ func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	schedule, err := c.scheduleService.CreateSchedule(name, createdBy, start, end, &weeklyAvailability)
+	limitToOneBookingPerUser := r.FormValue("limitToOneBookingPerUser") == "on"
+
+	schedule, err := c.scheduleService.CreateSchedule(name, createdBy, start, end, &weeklyAvailability, limitToOneBookingPerUser)
 	if err != nil {
 		http.Error(w, "Error creating schedule", http.StatusInternalServerError)
 		return
@@ -297,7 +300,11 @@ func (c *ScheduleControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Req
 
 	bookingId, err := c.scheduleService.BookTimeSlot(scheduleId, timeslotId, r.FormValue("name"), r.FormValue("email"))
 	if err != nil {
-		http.Error(w, "Error booking timeslot", http.StatusInternalServerError)
+		if errors.Is(err, ErrBookingLimitReached) {
+			http.Error(w, "Booking limit reached for provide booking email address", http.StatusBadRequest)
+		} else {
+			http.Error(w, "Error booking timeslot", http.StatusInternalServerError)
+		}
 		return
 	}
 

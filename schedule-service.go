@@ -190,28 +190,30 @@ func NewBooking(timeSlot *TimeSlot, bookerName string, bookerEmail string) *Book
 
 // later this can hold the public url etc...
 type Schedule struct {
-	ID                 int64               `json:"id"`
-	Name               string              `json:"name"`
-	Timezone           string              `json:"timezone"`
-	Start              time.Time           `json:"start"`
-	End                time.Time           `json:"end"`
-	TimeSlotDuration   time.Duration       `json:"timeSlotDuration"`
-	WeeklyAvailability *WeeklyAvailability `json:"weeklyAvailability"`
-	CreatedBy          string              `json:"createdBy"`
-	CreatedOn          time.Time           `json:"createdOn"`
-	UpdatedOn          time.Time           `json:"updatedOn"`
-	TimeSlots          []*TimeSlot         `json:"timeSlots"`
+	ID                       int64               `json:"id"`
+	Name                     string              `json:"name"`
+	Timezone                 string              `json:"timezone"`
+	Start                    time.Time           `json:"start"`
+	End                      time.Time           `json:"end"`
+	TimeSlotDuration         time.Duration       `json:"timeSlotDuration"`
+	WeeklyAvailability       *WeeklyAvailability `json:"weeklyAvailability"`
+	CreatedBy                string              `json:"createdBy"`
+	CreatedOn                time.Time           `json:"createdOn"`
+	UpdatedOn                time.Time           `json:"updatedOn"`
+	TimeSlots                []*TimeSlot         `json:"timeSlots"`
+	LimitToOneBookingPerUser bool                `json:"limitToSingleBookingPerUser"`
 }
 
-func NewSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability) *Schedule {
+func NewSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability, limitToOneBookingPerUser bool) *Schedule {
 	return &Schedule{
-		Name:               name,
-		CreatedBy:          createdBy,
-		Start:              start,
-		End:                end,
-		TimeSlotDuration:   15 * time.Minute,
-		Timezone:           time.Local.String(),
-		WeeklyAvailability: weeklyAvailability,
+		Name:                     name,
+		CreatedBy:                createdBy,
+		Start:                    start,
+		End:                      end,
+		TimeSlotDuration:         15 * time.Minute,
+		Timezone:                 time.Local.String(),
+		WeeklyAvailability:       weeklyAvailability,
+		LimitToOneBookingPerUser: limitToOneBookingPerUser,
 	}
 }
 
@@ -252,11 +254,12 @@ func (s *Schedule) GenerateTimeSlots() {
 }
 
 type ScheduleService interface {
-	CreateSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability) (*Schedule, error)
+	CreateSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability, limitToOneBookingPerUser bool) (*Schedule, error)
 	GetAllTimeSlots(scheduleId int64) ([]*TimeSlot, error)
 	GetTimeSlotsWithinRange(scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error)
 	FindAll(createdBy string) ([]*Schedule, error)
 	FindById(id int64) (*Schedule, error)
+	GetBookingsForUser(scheduleId int64, bookerEmail string) ([]*Booking, error)
 	BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (bookingId int64, err error)
 }
 
@@ -272,9 +275,9 @@ func NewScheduleService(repository ScheduleRepository) ScheduleService {
 	}
 }
 
-func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability) (*Schedule, error) {
+func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability, limitToOneBookingPerUser bool) (*Schedule, error) {
 	fmt.Println("Creating schedule")
-	schedule := NewSchedule(name, createdBy, start, end, weeklyAvailability)
+	schedule := NewSchedule(name, createdBy, start, end, weeklyAvailability, limitToOneBookingPerUser)
 	schedule.GenerateTimeSlots()
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
@@ -318,12 +321,31 @@ func (s *ScheduleServiceImpl) GetTimeSlotsWithinRange(scheduleId int64, start ti
 	return s.repository.GetTimeSlotsWithinRange(ctx, scheduleId, start, end)
 }
 
+func (s *ScheduleServiceImpl) GetBookingsForUser(scheduleId int64, bookerEmail string) ([]*Booking, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	return s.repository.GetBookingsForUser(ctx, scheduleId, bookerEmail)
+}
+
+var ErrBookingLimitReached = errors.New("user has already booked a timeslot")
+
 // todo -- should this accept and ID instead?
 // todo -- should this return a booking?
 func (s *ScheduleServiceImpl) BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (int64, error) {
 	schedule, err := s.FindById(scheduleId)
 	if err != nil {
 		return 0, err
+	}
+
+	bookings, err := s.GetBookingsForUser(scheduleId, bookerEmail)
+	if err != nil {
+		return 0, err
+	}
+
+	// todo -- should we alow the schedule owner to book multiple times?
+	if schedule.LimitToOneBookingPerUser && len(bookings) > 0 {
+		return 0, ErrBookingLimitReached
 	}
 
 	var timeslot *TimeSlot
