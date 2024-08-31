@@ -33,7 +33,7 @@ func NewScheduleController(scheduleService ScheduleService, cookieStore *session
 			return i % x
 		}}
 	funcs := []template.FuncMap{renderFuncMap}
-	render := render.New(render.Options{Extensions: []string{".html"}, Directory: "views", Funcs: funcs})
+	render := render.New(render.Options{Extensions: []string{".html"}, Layout: "layout", Directory: "views", Funcs: funcs})
 
 	return &ScheduleControllerImpl{
 		scheduleService: scheduleService,
@@ -60,29 +60,11 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 		r.Get("/", c.getSchedules)
 		r.Post("/", c.createSchedule)
 		r.Get("/{scheduleId}", c.getScheduleById)
-		r.Get("/{scheduleId}/timeslots/{timeslotId}/booking-form", c.getBookingForm)
+		r.Get("/{scheduleId}/timeslots/{timeslotId}/book", c.getBookingForm)
 		r.Post("/{scheduleId}/timeslots/{timeslotId}/book", c.bookTimeslot)
 	})
 
 	return c.router
-}
-
-// todo -- should this belong to the service?
-func dayHasTimeSlot(day time.Time, timeslots []*TimeSlot) bool {
-	for _, timeslot := range timeslots {
-		if timeslot.Start.Year() != day.Year() && timeslot.End.Year() != day.Year() {
-			continue
-		}
-
-		if timeslot.Start.Month() != day.Month() && timeslot.End.Month() != day.Month() {
-			continue
-		}
-
-		if timeslot.Start.Day() == day.Day() || timeslot.End.Day() == day.Day() {
-			return true
-		}
-	}
-	return false
 }
 
 type SchedulesViewModel struct {
@@ -93,6 +75,7 @@ type SchedulesViewModel struct {
 type TimeSlotBookingViewModel struct {
 	TimeSlot *TimeSlot
 	Schedule *Schedule
+	User     Auth0Profile
 }
 
 type ScheduleViewModel struct {
@@ -101,6 +84,7 @@ type ScheduleViewModel struct {
 	NextMonth     time.Time
 	PreviousMonth time.Time
 	Days          []NullableTime
+	User          Auth0Profile
 }
 
 type NullableTime struct {
@@ -203,6 +187,8 @@ func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.R
 }
 
 func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.Request) {
+	auth0Profile, _ := getAuth0Profile(r) // since this is a protected route, we can assume the profile is there
+
 	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
 	if err != nil {
 		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
@@ -234,15 +220,20 @@ func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.
 	numDaysTillFirstSunday := int(time.Sunday - startOfMonth.Weekday())
 	currentDay := startOfMonth.AddDate(0, 0, numDaysTillFirstSunday)
 
+	// todo -- this should probably be improved so that we don't have to loop through all days and we only pass the timeslots for the provided date to the view
 	for currentDay.Before(startOfNextMonth) {
 		days = append(days, NullableTime{Time: currentDay, IsThisMonth: currentDay.Month() == date.Month(), HasAvailableAppointment: dayHasTimeSlot(currentDay, schedule.TimeSlots)})
 		currentDay = currentDay.AddDate(0, 0, 1)
 	}
 
-	c.render.HTML(w, http.StatusOK, "schedule", &ScheduleViewModel{Schedule: schedule, Date: date, NextMonth: startOfNextMonth, PreviousMonth: startOfMonth.AddDate(0, 0, -1), Days: days})
+	scheduleData := &ScheduleViewModel{Schedule: schedule, Date: date, NextMonth: startOfNextMonth, PreviousMonth: startOfMonth.AddDate(0, 0, -1), Days: days, User: auth0Profile}
+
+	c.render.HTML(w, http.StatusOK, "schedule", scheduleData, overrideLayoutIfHtmx(r))
 }
 
 func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.Request) {
+	auth0Profile, _ := getAuth0Profile(r) // protected route so can ignore error
+
 	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
 	if err != nil {
 		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
@@ -282,7 +273,9 @@ func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	c.render.HTML(w, http.StatusOK, "booking-form", &TimeSlotBookingViewModel{TimeSlot: timeslot, Schedule: schedule})
+	timeslotBookingData := &TimeSlotBookingViewModel{TimeSlot: timeslot, Schedule: schedule, User: auth0Profile}
+
+	c.render.HTML(w, http.StatusOK, "booking-form", timeslotBookingData, overrideLayoutIfHtmx(r))
 }
 
 func (c *ScheduleControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Request) {
@@ -323,10 +316,41 @@ func (c *ScheduleControllerImpl) isAuthenticated(next http.Handler) http.Handler
 	})
 }
 
+// todo -- should this belong to the service?
+func dayHasTimeSlot(day time.Time, timeslots []*TimeSlot) bool {
+	for _, timeslot := range timeslots {
+		if timeslot.Start.Year() != day.Year() && timeslot.End.Year() != day.Year() {
+			continue
+		}
+
+		if timeslot.Start.Month() != day.Month() && timeslot.End.Month() != day.Month() {
+			continue
+		}
+
+		if timeslot.Start.Day() == day.Day() || timeslot.End.Day() == day.Day() {
+			return true
+		}
+	}
+	return false
+}
+
 func getAuth0Profile(r *http.Request) (Auth0Profile, error) {
 	profile, ok := r.Context().Value(RequestContextKey("profile")).(Auth0Profile)
 	if !ok {
 		return profile, fmt.Errorf("profile not found in context")
 	}
 	return profile, nil
+}
+
+func overrideLayoutIfHtmx(r *http.Request) render.HTMLOptions {
+	if isHtmxRequest(r) {
+		return render.HTMLOptions{Layout: "layout-htmx-partial"}
+	}
+
+	return render.HTMLOptions{}
+}
+
+func isHtmxRequest(r *http.Request) bool {
+	hxReqHeader := r.Header["Hx-Request"]
+	return len(hxReqHeader) == 1 && strings.ToLower(hxReqHeader[0]) == "true"
 }

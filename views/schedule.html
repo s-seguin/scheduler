@@ -1,69 +1,63 @@
-<head>
-    <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
-        integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous"> -->
-    <!-- <link href="/static/css/styles.css" rel="stylesheet" /> -->
-    <script src="/static/js/htmx.min.js"></script>
-</head>
-
-<body>
-    <div id="scheduleContainer">
-        <h1>Schedule {{.Schedule.ID}} {{.Schedule.Name}}</h1>
-        <p>{{.Date}}</p>
-        <div>
-            <button hx-get="/schedules/{{.Schedule.ID}}?date={{.PreviousMonth}}" hx-target="#scheduleContainer">
-                Prev
-            </button>
-            <button hx-get="/schedules/{{.Schedule.ID}}?date={{.NextMonth}}" hx-target="#scheduleContainer">
-                Next
-            </button>
-        </div>
-        <table>
-            <tr>
-                <th>Su</th>
-                <th>Mo</th>
-                <th>Tu</th>
-                <th>We</th>
-                <th>Th</th>
-                <th>Fr</th>
-                <th>Sa</th>
-            </tr>
-            <tr>
-                {{range $i, $day := .Days}}
-                {{if eq $day.Time.Weekday 0 }} <!-- 0 == Sunday -->
-            </tr>
-            <tr>
-                {{end}}
-                {{if not $day.IsThisMonth}}
-                <td></td>
-                {{else if $day.HasAvailableAppointment}}
-                <td>
-                    {{if eq $.Date.Day $day.Time.Day}}
-                    <button disabled>
-                        <b>{{$day.Time.Day}}</b>
-                    </button>
-                    {{else}}
-                    <button hx-get="/schedules/{{$.Schedule.ID}}?date={{$day.Time}}" hx-target="#scheduleContainer">
-                        {{$day.Time.Day}}</button>
-                    {{end}}
-                </td>
-                {{else}}
-                <td>
-                    {{$day.Time.Day}}
-                </td>
-                {{end}}
-                {{end}}
-            </tr>
-        </table>
-        <ul>
-            {{range .Schedule.TimeSlots}}
-            {{if eq $.Date.Day .Start.Day}}
-            <li>{{.Start.Format "15:04 MST"}} - {{.End.Format "15:04 MST"}}
-                <button {{if not .IsAvailable}} disabled {{end}}
-                    hx-get="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/booking-form" hx-target="#scheduleContainer">
-                    book </button>
-            </li>
-            {{end}}
-            {{end}}
-        </ul>
+<div>
+    <h1>Schedule {{.Schedule.ID}} {{.Schedule.Name}}</h1>
+    <p>{{.Date}}</p>
+    <div>
+        <button hx-get="/schedules/{{.Schedule.ID}}?date={{.PreviousMonth}}" hx-target="#content-container">
+            Prev
+        </button>
+        <button hx-get="/schedules/{{.Schedule.ID}}?date={{.NextMonth}}" hx-target="#content-container">
+            Next
+        </button>
     </div>
-</body>
+    <table>
+        <tr>
+            <th>Su</th>
+            <th>Mo</th>
+            <th>Tu</th>
+            <th>We</th>
+            <th>Th</th>
+            <th>Fr</th>
+            <th>Sa</th>
+        </tr>
+        <tr>
+            {{range $i, $day := .Days}}
+            {{if eq $day.Time.Weekday 0 }} <!-- 0 == Sunday -->
+        </tr>
+        <tr>
+            {{end}}
+            {{if not $day.IsThisMonth}}
+            <td></td>
+            {{else if $day.HasAvailableAppointment}}
+            <td>
+                {{if eq $.Date.Day $day.Time.Day}}
+                <button disabled>
+                    <b>{{$day.Time.Day}}</b>
+                </button>
+                {{else}}
+                <button hx-get="/schedules/{{$.Schedule.ID}}?date={{$day.Time}}" hx-target="#content-container">
+                    {{$day.Time.Day}}</button>
+                {{end}}
+            </td>
+            {{else}}
+            <td>
+                {{$day.Time.Day}}
+            </td>
+            {{end}}
+            {{end}}
+        </tr>
+    </table>
+    <ul>
+        {{range .Schedule.TimeSlots}}
+        {{if eq $.Date.Day .Start.Day}}
+        <li>{{.Start.Format "15:04 MST"}} - {{.End.Format "15:04 MST"}}
+            <a {{if not .IsAvailable}} disabled {{end}} href="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/book">
+                book </a>
+            <button {{if not .IsAvailable}} disabled {{end}}
+                hx-get="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/book" hx-target="#content-container"
+                hx-push-url="true">
+                book </button>
+        </li>
+        {{end}}
+        {{end}}
+    </ul>
+</div>

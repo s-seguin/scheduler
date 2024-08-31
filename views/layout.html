@@ -1,0 +1,13 @@
+<head>
+    <script src="/static/js/htmx.min.js"></script>
+    <!-- <link href="/static/css/styles.css" rel="stylesheet" /> -->
+    <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"> -->
+</head>
+
+<body>
+    <!-- <div id="navbar-container" hx-get="/layout/navbar" hx-trigger="load" hx-target="#navbar-container"></div> -->
+    {{ template "navbar" . }}
+    <div id="content-container">
+        {{ yield }}
+    </div>
+</body>

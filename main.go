@@ -21,17 +21,20 @@ func main() {
 	server.MountAuthRoutes()
 
 	// todo -- either flag this or delete it
-	DeleteTestDb()
+	// log.Println("Deleting test db")
+	// DeleteTestDb()
 
+	log.Println("Creating db")
 	db, err := CreateDb("./_sqlite/scheduler.db")
 	if err != nil {
 		log.Fatal("Error creating db", err)
 	}
 	defer db.Close()
 
+	log.Println("Migrating db")
 	err = Migrate(db)
 	if err != nil {
-		log.Fatal("Error performing migrations", err)
+		log.Fatal("Error performing migrations ", err)
 	}
 
 	scheduleRepository := NewSQLScheduleRepository(db)
