@@ -1,9 +1,13 @@
 {{ define "navbar" }}
-<nav>
-    <ul>
-        <li><a href="/">Home</a></li>
-        <li><a>{{.User.Name}}</a></li>
-        <li><a href="/logout">Logout</a></li>
-    </ul>
-</nav>
+<div class="bg-white shadow-md p-4">
+    <div class="container mx-auto flex justify-between items-center">
+        <div class="text-slate-700 text-lg font-medium">
+            <a href="/" class="text-2xl">Scheduler</a>
+        </div>
+        <ul class="flex space-x-4 text-slate-700 font-semibold font-sans text-sm leading-6">
+            <li><a href="#" class="hover:text-sky-500">{{.User.Name}}</a></li>
+            <li><a href="/logout" class="hover:text-sky-500">Logout</a></li>
+        </ul>
+    </div>
+</div>
 {{ end }}

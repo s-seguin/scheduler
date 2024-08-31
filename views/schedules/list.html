@@ -1,14 +1,17 @@
-<div>
-    <h3>My Schedules</h3>
-    <ul>
-        {{range .Schedules}}
-        <li>
-            <a href="/schedules/{{.ID}}">{{.Name}}</a>
-        </li>
-        {{else}}
-        <li>No schedules found</li>
-        {{end}}
-    </ul>
-    <button hx-get="/schedules/new" hx-target="#content-container">New Schedule</button>
-</div>
+<div class="flex flex-col h-full w-8/12 bg-white">
+    <div class="w-full max-w-md p-4">
+        <h3 class="font-semibold text-slate-700 text-3xl mb-4 text-left">My Schedules</h3>
+        <ul class="mb-4 px-4 text-left">
+            {{range .Schedules}}
+            <li class="mb-2">
+                <a href="/schedules/{{.ID}}" class="text-blue-500 hover:underline">{{.Name}}</a>
+            </li>
+            {{else}}
+            <li class="text-red-500">No schedules found</li>
+            {{end}}
+        </ul>
 
+    </div>
+    <button class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700 transition duration-300"
+        hx-get="/schedules/new" hx-target="#content-container">New Schedule</button>
+</div>
