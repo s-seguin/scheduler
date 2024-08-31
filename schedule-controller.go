@@ -58,6 +58,7 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 		r.Use(c.isAuthenticated)
 
 		r.Get("/", c.getSchedules)
+		r.Get("/new", c.getScheduleForm)
 		r.Post("/", c.createSchedule)
 		r.Get("/{scheduleId}", c.getScheduleById)
 		r.Get("/{scheduleId}/timeslots/{timeslotId}/book", c.getBookingForm)
@@ -103,7 +104,13 @@ func (c *ScheduleControllerImpl) getSchedules(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	c.render.HTML(w, http.StatusOK, "schedules/list", &SchedulesViewModel{schedules, auth0Profile})
+	c.render.HTML(w, http.StatusOK, "schedules/list", &SchedulesViewModel{schedules, auth0Profile}, overrideLayoutIfHtmx(r))
+}
+
+func (c *ScheduleControllerImpl) getScheduleForm(w http.ResponseWriter, r *http.Request) {
+	auth0Profile, _ := getAuth0Profile(r)
+
+	c.render.HTML(w, http.StatusOK, "schedules/new", &SchedulesViewModel{Schedules: nil, User: auth0Profile}, overrideLayoutIfHtmx(r))
 }
 
 func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.Request) {
@@ -182,8 +189,7 @@ func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.R
 
 	fmt.Printf("schedule %v\n", schedule)
 
-	// fmt.Printf("sundayStartTime %s sundayEndTime %s\nscheduleId %d", sundayStartTime, sundayEndTime, schedule.ID)
-	c.render.HTML(w, http.StatusOK, "schedules/created-partial", nil)
+	c.render.HTML(w, http.StatusOK, "schedules/created-partial", nil, overrideLayoutIfHtmx(r))
 }
 
 func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.Request) {

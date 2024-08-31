@@ -1,5 +1,5 @@
 <div>
-    <h3>Schedules</h3>
+    <h3>My Schedules</h3>
     <ul>
         {{range .Schedules}}
         <li>
@@ -9,78 +9,6 @@
         <li>No schedules found</li>
         {{end}}
     </ul>
+    <button hx-get="/schedules/new" hx-target="#content-container">New Schedule</button>
 </div>
-<div>
-    <h3>Create Schedule</h3>
-    <form hx-post="/schedules" hx-trigger="submit" hx-target="closest div">
-        <div>
-            <label for="name">Name</label>
-            <input type="text" name="name" placeholder="Schedule Name" />
-        </div>
-        <label for="startDate">Start Date</label>
-        <input type="date" name="startDate" placeholder="Start Date" />
-        <label for="endDate">End Date</label>
-        <input type="date" name="endDate" placeholder="End Date" />
-        <div>
-            <label for="sundayStartTime">Sunday Availability</label>
-            <input type="time" step="900" list="time-options" name="sundayStartTime" placeholder="Sunday Start Time" />
-            <input type="time" step="900" list="time-options" name="sundayEndTime" placeholder="Sunday End Time" />
-        </div>
-        <div>
-            <label for="mondayStartTime">Monday Availability</label>
-            <input type="time" step="900" list="time-options" name="mondayStartTime" placeholder="Monday Start Time" />
-            <input type="time" step="900" list="time-options" name="mondayEndTime" placeholder="Monday End Time" />
-        </div>
-        <div>
-            <label for="tuesdayStartTime">Tuesday Availability</label>
-            <input type="time" step="900" list="time-options" name="tuesdayStartTime"
-                placeholder="Tuesday Start Time" />
-            <input type="time" step="900" list="time-options" name="tuesdayEndTime" placeholder="Tuesday End Time" />
-        </div>
-        <div>
-            <label for="wednesdayStartTime">Wednesday Availability</label>
-            <input type="time" step="900" list="time-options" name="wednesdayStartTime"
-                placeholder="Wednesday Start Time" />
-            <input type="time" step="900" list="time-options" name="wednesdayEndTime"
-                placeholder="Wednesday End Time" />
-        </div>
-        <div>
-            <label for="thursdayStartTime">Thursday Availability</label>
-            <input type="time" step="900" list="time-options" name="thursdayStartTime"
-                placeholder="Thursday Start Time" />
-            <input type="time" step="900" list="time-options" name="thursdayEndTime" placeholder="Thursday End Time" />
-        </div>
-        <div>
-            <label for="fridayStartTime">Friday Availability</label>
-            <input type="time" step="900" list="time-options" name="fridayStartTime" placeholder="Friday Start Time" />
-            <input type="time" step="900" list="time-options" name="fridayEndTime" placeholder="Friday End Time" />
-        </div>
-        <div>
-            <label for="saturdayStartTime">Saturday Availability</label>
-            <input type="time" step="900" list="time-options" name="saturdayStartTime"
-                placeholder="Saturday Start Time" />
-            <input type="time" step="900" list="time-options" name="saturdayEndTime" placeholder="Saturday End Time" />
-        </div>
-        <div>
-            <label for="limitToOneBookingPerUser">Limit to One Booking Per User</label>
-            <input type="checkbox" name="limitToOneBookingPerUser" placeholder=" Booking Per User Limit" />
-        </div>
-        <button type="submit">Create</button>
-    </form>
-</div>
-<datalist id="time-options">
-</datalist>
 
-<script>
-    const timeOptions = document.getElementById("time-options");
-
-    for (let hour = 0; hour <= 23; hour++) {
-        for (let minute = 0; minute < 60; minute += 15) {
-            const option = document.createElement("option");
-            const time = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-            option.value = time;
-            option.text = time;
-            timeOptions.appendChild(option);
-        }
-    }
-</script>
