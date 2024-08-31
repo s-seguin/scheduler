@@ -21,3 +21,5 @@ _sqlite/*
 tmp/*
 node_modules/*
 .env
+
+scheduler
