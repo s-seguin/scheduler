@@ -103,7 +103,7 @@ func (c *ScheduleControllerImpl) getSchedules(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	c.render.HTML(w, http.StatusOK, "schedules", &SchedulesViewModel{schedules, auth0Profile})
+	c.render.HTML(w, http.StatusOK, "schedules/list", &SchedulesViewModel{schedules, auth0Profile})
 }
 
 func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +183,7 @@ func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.R
 	fmt.Printf("schedule %v\n", schedule)
 
 	// fmt.Printf("sundayStartTime %s sundayEndTime %s\nscheduleId %d", sundayStartTime, sundayEndTime, schedule.ID)
-	c.render.HTML(w, http.StatusOK, "schedule-created-partial", nil)
+	c.render.HTML(w, http.StatusOK, "schedules/created-partial", nil)
 }
 
 func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +228,7 @@ func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.
 
 	scheduleData := &ScheduleViewModel{Schedule: schedule, Date: date, NextMonth: startOfNextMonth, PreviousMonth: startOfMonth.AddDate(0, 0, -1), Days: days, User: auth0Profile}
 
-	c.render.HTML(w, http.StatusOK, "schedule", scheduleData, overrideLayoutIfHtmx(r))
+	c.render.HTML(w, http.StatusOK, "schedules/view", scheduleData, overrideLayoutIfHtmx(r))
 }
 
 func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.Request) {
@@ -275,10 +275,12 @@ func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.R
 
 	timeslotBookingData := &TimeSlotBookingViewModel{TimeSlot: timeslot, Schedule: schedule, User: auth0Profile}
 
-	c.render.HTML(w, http.StatusOK, "booking-form", timeslotBookingData, overrideLayoutIfHtmx(r))
+	c.render.HTML(w, http.StatusOK, "schedules/booking-form", timeslotBookingData, overrideLayoutIfHtmx(r))
 }
 
 func (c *ScheduleControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Request) {
+	auth0Profile, _ := getAuth0Profile(r)
+
 	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
 	if err != nil {
 		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
@@ -291,7 +293,7 @@ func (c *ScheduleControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	bookingId, err := c.scheduleService.BookTimeSlot(scheduleId, timeslotId, r.FormValue("name"), r.FormValue("email"))
+	timeslot, err := c.scheduleService.BookTimeSlot(scheduleId, timeslotId, r.FormValue("name"), r.FormValue("email"))
 	if err != nil {
 		if errors.Is(err, ErrBookingLimitReached) {
 			http.Error(w, "Booking limit reached for provide booking email address", http.StatusBadRequest)
@@ -301,7 +303,7 @@ func (c *ScheduleControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	c.render.Text(w, http.StatusOK, fmt.Sprintf("Booking successful! Your booking ID is %d <button hx-get=\"/schedules/%d\" hx-target=\"#scheduleContainer\">Return to schedule</button>", bookingId, scheduleId))
+	c.render.HTML(w, http.StatusOK, "schedules/booked-partial", &TimeSlotBookingViewModel{TimeSlot: timeslot, Schedule: &Schedule{ID: scheduleId}, User: auth0Profile}, overrideLayoutIfHtmx(r))
 }
 
 func (c *ScheduleControllerImpl) isAuthenticated(next http.Handler) http.Handler {

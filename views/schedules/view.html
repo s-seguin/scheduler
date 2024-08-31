@@ -50,11 +50,8 @@
         {{range .Schedule.TimeSlots}}
         {{if eq $.Date.Day .Start.Day}}
         <li>{{.Start.Format "15:04 MST"}} - {{.End.Format "15:04 MST"}}
-            <a {{if not .IsAvailable}} disabled {{end}} href="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/book">
-                book </a>
             <button {{if not .IsAvailable}} disabled {{end}}
-                hx-get="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/book" hx-target="#content-container"
-                hx-push-url="true">
+                hx-get="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/book" hx-target="#content-container">
                 book </button>
         </li>
         {{end}}

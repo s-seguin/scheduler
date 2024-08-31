@@ -166,10 +166,6 @@ func (t *TimeSlot) IsAvailable() bool {
 	return t.Booking == nil
 }
 
-func (t *TimeSlot) Book(bookerName string, bookerEmail string) {
-	t.Booking = NewBooking(t, bookerName, bookerEmail)
-}
-
 // todo -- can probably remove the reference to TimeSlot here
 type Booking struct {
 	ID          int64     `json:"id"`
@@ -260,7 +256,7 @@ type ScheduleService interface {
 	FindAll(createdBy string) ([]*Schedule, error)
 	FindById(id int64) (*Schedule, error)
 	GetBookingsForUser(scheduleId int64, bookerEmail string) ([]*Booking, error)
-	BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (bookingId int64, err error)
+	BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (timeslot *TimeSlot, err error)
 }
 
 type ScheduleServiceImpl struct {
@@ -332,22 +328,23 @@ var ErrBookingLimitReached = errors.New("user has already booked a timeslot")
 
 // todo -- should this accept and ID instead?
 // todo -- should this return a booking?
-func (s *ScheduleServiceImpl) BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (int64, error) {
+func (s *ScheduleServiceImpl) BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (*TimeSlot, error) {
 	schedule, err := s.FindById(scheduleId)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	bookings, err := s.GetBookingsForUser(scheduleId, bookerEmail)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	// todo -- should we alow the schedule owner to book multiple times?
 	if schedule.LimitToOneBookingPerUser && len(bookings) > 0 {
-		return 0, ErrBookingLimitReached
+		return nil, ErrBookingLimitReached
 	}
 
+	// todo -- Should we fetch the timeslot from the repository
 	var timeslot *TimeSlot
 	for _, ts := range schedule.TimeSlots {
 		if ts.ID == timeslotId {
@@ -357,15 +354,20 @@ func (s *ScheduleServiceImpl) BookTimeSlot(scheduleId int64, timeslotId int64, b
 	}
 
 	if timeslot == nil {
-		return 0, errors.New("timeslot not found")
+		return nil, errors.New("timeslot not found")
 	}
 
 	if !timeslot.IsAvailable() {
-		return 0, errors.New("timeslot is not available")
+		return nil, errors.New("timeslot is not available")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
 	defer cancel()
 
-	return s.repository.BookTimeSlot(ctx, scheduleId, timeslot, bookerName, bookerEmail)
+	err = s.repository.BookTimeSlot(ctx, scheduleId, timeslot, bookerName, bookerEmail)
+	if err != nil {
+		return nil, err
+	}
+
+	return timeslot, nil
 }

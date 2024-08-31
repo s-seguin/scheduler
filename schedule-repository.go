@@ -19,7 +19,7 @@ type ScheduleRepository interface {
 	Delete(ctx context.Context, scheduleId *Schedule) error
 	GetAllTimeSlots(ctx context.Context, scheduleId int64) ([]*TimeSlot, error)
 	GetTimeSlotsWithinRange(ctx context.Context, scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error)
-	BookTimeSlot(ctx context.Context, scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) (bookingId int64, err error)
+	BookTimeSlot(ctx context.Context, scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) error
 	GetBookings(ctx context.Context, scheduleId int64) ([]*Booking, error)
 	GetBookingsForUser(ctx context.Context, scheduleId int64, bookerEmail string) ([]*Booking, error)
 }
@@ -601,16 +601,18 @@ func (r *SQLScheduleRepository) parseTimeSlotSqlRows(rows *sql.Rows) ([]*TimeSlo
 	return timeslots, nil
 }
 
-func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) (bookingId int64, err error) {
+func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) error {
+	var bookingId int64
+
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer tx.Rollback() // defer rollback incase anything fails
 
 	err = r.DB.QueryRowContext(ctx, `SELECT bookingId FROM timeSlot WHERE id = ? AND scheduleId = ? AND bookingId IS NOT NULL`, timeslot.ID, scheduleId).Scan(&bookingId)
 	if err != sql.ErrNoRows {
-		return 0, fmt.Errorf("timeslot already booked. bookingId: %d", bookingId)
+		return fmt.Errorf("timeslot already booked. bookingId: %d", bookingId)
 	}
 
 	bookingCreatedOn := time.Now()
@@ -618,22 +620,22 @@ func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int
 
 	res, err := r.DB.ExecContext(ctx, `INSERT INTO booking (timeSlotId, bookerName, bookerEmail, createdOn, updatedOn) VALUES (?, ?, ?, ?, ?)`, timeslot.ID, bookerName, bookerEmail, bookingCreatedOn, bookingUpdatedOn)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	bookingId, err = res.LastInsertId()
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	_, err = r.DB.ExecContext(ctx, `UPDATE timeSlot SET bookingId = ? WHERE id = ?`, bookingId, timeslot.ID)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	timeslot.Booking = &Booking{
@@ -645,7 +647,7 @@ func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int
 		UpdatedOn:   bookingUpdatedOn,
 	}
 
-	return bookingId, nil
+	return nil
 }
 
 func (r *SQLScheduleRepository) GetBookings(ctx context.Context, scheduleId int64) ([]*Booking, error) {
