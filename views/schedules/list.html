@@ -1,7 +1,7 @@
-<div class="flex flex-col h-full w-8/12 bg-white">
+<div class="flex flex-col mt-4 w-10/12 min-w-96 max-w-5xl bg-white rounded-md">
     <div class="w-full max-w-md p-4">
         <h3 class="font-semibold text-slate-700 text-3xl mb-4 text-left">My Schedules</h3>
-        <ul class="mb-4 px-4 text-left">
+        <ul class="mb-4 p-4 text-left">
             {{range .Schedules}}
             <li class="mb-2">
                 <a href="/schedules/{{.ID}}" class="text-blue-500 hover:underline">{{.Name}}</a>
@@ -12,6 +12,6 @@
         </ul>
 
     </div>
-    <button class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700 transition duration-300"
-        hx-get="/schedules/new" hx-target="#content-container">New Schedule</button>
+    <button class="m-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700 transition duration-300"
+        hx-get="/schedules/new" hx-target="#content-container" hx-push-url="true">New Schedule</button>
 </div>

@@ -4,10 +4,11 @@
     <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"> -->
 </head>
 
-<body class="bg-slate-100">
-    <!-- <div id="navbar-container" hx-get="/layout/navbar" hx-trigger="load" hx-target="#navbar-container"></div> -->
-    {{ template "navbar" . }}
-    <div id="content-container" class="flex flex-col items-center h-full">
+<body class="bg-slate-100 h-fit">
+    <header>
+        {{ template "navbar" . }}
+    </header>
+    <div id="content-container" class="flex flex-col items-center relative z-0 mt-16 h-full">
         {{ yield }}
     </div>
 </body>
