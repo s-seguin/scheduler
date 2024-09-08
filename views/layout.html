@@ -4,11 +4,14 @@
     <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"> -->
 </head>
 
-<body class="bg-slate-100 h-fit">
+<body class="bg-slate-100 h-full">
     <header>
         {{ template "navbar" . }}
     </header>
-    <div id="content-container" class="flex flex-col items-center relative z-0 mt-16 h-full">
-        {{ yield }}
-    </div>
+    <main class="h-full flex flex-col items-center relative ">
+        <div id="content-container"
+            class="flex flex-col items-center relative z-0 pt-16 w-10/12 min-w-96 max-w-5xl  h-full">
+            {{ yield }}
+        </div>
+    </main>
 </body>

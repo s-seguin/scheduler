@@ -1,61 +1,69 @@
-<div class="flex flex-col mt-4 w-10/12 min-w-96 max-w-5xl bg-white rounded-md">
-    <h1>Schedule {{.Schedule.ID}} {{.Schedule.Name}}</h1>
-    <p>{{.Date}}</p>
-    <div>
-        <button hx-get="/schedules/{{.Schedule.ID}}?date={{.PreviousMonth}}" hx-target="#content-container">
-            Prev
-        </button>
-        <button hx-get="/schedules/{{.Schedule.ID}}?date={{.NextMonth}}" hx-target="#content-container">
-            Next
-        </button>
-    </div>
-    <table>
-        <tr>
-            <th>Su</th>
-            <th>Mo</th>
-            <th>Tu</th>
-            <th>We</th>
-            <th>Th</th>
-            <th>Fr</th>
-            <th>Sa</th>
-        </tr>
-        <tr>
-            {{range $i, $day := .Days}}
-            {{if eq $day.Time.Weekday 0 }} <!-- 0 == Sunday -->
-        </tr>
-        <tr>
-            {{end}}
-            {{if not $day.IsThisMonth}}
-            <td></td>
-            {{else if $day.HasAvailableAppointment}}
-            <td>
-                {{if eq $.Date.Day $day.Time.Day}}
-                <button disabled>
-                    <b>{{$day.Time.Day}}</b>
-                </button>
+<div class="flex flex-col mt-4 w-full bg-white rounded-md p-4">
+    <h3 class="font-semibold text-slate-700 text-3xl mb-4 text-left">{{.Schedule.Name}} </h3>
+    <div class="w-full grid grid-cols-1 sm:grid-cols-2">
+        <div class="mt-4">
+            <h5 class="text-slate-700 text-lg mb-4">Select a Date and Time</h5>
+            <div class="grid items-center justify-center border w-fit h-96 rounded p-4 ">
+                <div class="grid justify-center items-baseline grid-cols-3">
+                    <button hx-get="/schedules/{{.Schedule.ID}}?date={{.PreviousMonth}}" hx-target="#content-container"
+                        class="bg-slate-100 text-slate-400 px-2 py-2 rounded-md  hover:bg-slate-200">Prev</button>
+                    <p class="text-center text-slate-700 text-xl pb-6">{{.Date.Format "January"}}</p>
+                    <button hx-get="/schedules/{{.Schedule.ID}}?date={{.NextMonth}}" hx-target="#content-container"
+                        class="bg-slate-100 text-slate-400 px-2 py-2 rounded-md hover:bg-slate-200">Next</button>
+                </div>
+                <div class="grid gap-2 w-full h-full grid-cols-7 items-center">
+                    <p class="text-center text-slate-700 pb-6">Su</p>
+                    <p class="text-center text-slate-700 pb-6">Mo</p>
+                    <p class="text-center text-slate-700 pb-6">Tu</p>
+                    <p class="text-center text-slate-700 pb-6">We</p>
+                    <p class="text-center text-slate-700 pb-6">Th</p>
+                    <p class="text-center text-slate-700 pb-6">Fr</p>
+                    <p class="text-center text-slate-700 pb-6">Sa</p>
+                </div>
+                <div class="grid w-full h-full gap-2 grid-cols-7 items-center bg-slate-100 p-2 rounded-md">
+                    {{range $i, $day := .Days}}
+                    {{if not $day.IsThisMonth}}
+                    <div></div>
+                    {{else if $day.HasAvailableAppointment}}
+                    {{if eq $.Date.Day $day.Time.Day}}
+                    <button disabled class="text-center py-2 px-2 w-10 h-10  bg-slate-400 text-slate-600 rounded-full">
+                        {{$day.Time.Day}}
+                    </button>
+                    {{else}}
+                    <button hx-get="/schedules/{{$.Schedule.ID}}?date={{$day.Time}}" hx-target="#content-container"
+                        hx-push-url="true"
+                        class="text-center py-2 px-2 w-10 h-10  bg-blue-500 text-white hover:bg-blue-700 cursor-pointer rounded-full shadow-md">
+                        {{$day.Time.Day}}
+                    </button>
+                    {{end}}
+                    {{else}}
+                    <div class="text-center py-2 px-2 w-10 h-10 bg-slate-200 text-slate-400 rounded-full shadow-sm">
+                        {{$day.Time.Day}}
+                    </div>
+                    {{end}}
+                    {{end}}
+                </div>
+            </div>
+        </div>
+        <div class="p-4">
+            <h4 class="text-slate-700 text-xl ">{{.Date.Format "Monday, January 2"}}</h4>
+            <h6 class="text-slate-500 mb-4">Timezone: {{.Date.Format "MST"}}</h6>
+            <ul class="grid grid-cols1 gap-4 ">
+                {{range .Schedule.TimeSlots}}
+                {{if eq $.Date.Day .Start.Day}}
+                {{if .IsAvailable}}
+                <li class="p-4 bg-blue-500 text-white hover:bg-blue-700 cursor-pointer rounded shadow text-center"
+                    hx-get="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/book" hx-target="#content-container">
+                    {{.Start.Format "3:04 pm"}}
+                </li>
                 {{else}}
-                <button hx-get="/schedules/{{$.Schedule.ID}}?date={{$day.Time}}" hx-target="#content-container"
-                    hx-push-url="true">
-                    {{$day.Time.Day}}</button>
+                <li class="p-4 bg-slate-200 text-slate-400 rounded text-center">
+                    {{.Start.Format "3:04 pm"}}
+                </li>
                 {{end}}
-            </td>
-            {{else}}
-            <td>
-                {{$day.Time.Day}}
-            </td>
-            {{end}}
-            {{end}}
-        </tr>
-    </table>
-    <ul>
-        {{range .Schedule.TimeSlots}}
-        {{if eq $.Date.Day .Start.Day}}
-        <li>{{.Start.Format "15:04 MST"}} - {{.End.Format "15:04 MST"}}
-            <button {{if not .IsAvailable}} disabled {{end}}
-                hx-get="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/book" hx-target="#content-container">
-                book </button>
-        </li>
-        {{end}}
-        {{end}}
-    </ul>
+                {{end}}
+                {{end}}
+            </ul>
+        </div>
+    </div>
 </div>
