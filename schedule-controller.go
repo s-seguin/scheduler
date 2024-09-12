@@ -227,8 +227,9 @@ func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.
 	currentDay := startOfMonth.AddDate(0, 0, numDaysTillFirstSunday)
 
 	// todo -- this should probably be improved so that we don't have to loop through all days and we only pass the timeslots for the provided date to the view
+	// todo -- could split it up so that the schedule and timeslots are loaded on separate routes
 	for currentDay.Before(startOfNextMonth) {
-		days = append(days, NullableTime{Time: currentDay, IsThisMonth: currentDay.Month() == date.Month(), HasAvailableAppointment: dayHasTimeSlot(currentDay, schedule.TimeSlots)})
+		days = append(days, NullableTime{Time: currentDay, IsThisMonth: currentDay.Month() == date.Month(), HasAvailableAppointment: schedule.DayHasTimeSlot(currentDay)})
 		currentDay = currentDay.AddDate(0, 0, 1)
 	}
 
@@ -323,24 +324,6 @@ func (c *ScheduleControllerImpl) isAuthenticated(next http.Handler) http.Handler
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-// todo -- should this belong to the service?
-func dayHasTimeSlot(day time.Time, timeslots []*TimeSlot) bool {
-	for _, timeslot := range timeslots {
-		if timeslot.Start.Year() != day.Year() && timeslot.End.Year() != day.Year() {
-			continue
-		}
-
-		if timeslot.Start.Month() != day.Month() && timeslot.End.Month() != day.Month() {
-			continue
-		}
-
-		if timeslot.Start.Day() == day.Day() || timeslot.End.Day() == day.Day() {
-			return true
-		}
-	}
-	return false
 }
 
 func getAuth0Profile(r *http.Request) (Auth0Profile, error) {

@@ -175,7 +175,9 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 		FROM schedule AS s 
 		LEFT OUTER JOIN timeSlot AS t ON s.id = t.scheduleId
 		LEFT OUTER JOIN booking AS b ON t.id = b.timeSlotId 
-		WHERE s.id = ?`, id)
+		WHERE s.id = ?
+		ORDER BY t.start ASC	
+	`, id)
 	if err != nil {
 		return nil, err
 	}

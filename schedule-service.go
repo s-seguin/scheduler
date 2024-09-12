@@ -249,6 +249,70 @@ func (s *Schedule) GenerateTimeSlots() {
 	}
 }
 
+func (s *Schedule) GetTimeSlotsStartingWithinRange(start time.Time, end time.Time) []*TimeSlot {
+	var timeSlots []*TimeSlot
+
+	var timeSlotIdx int
+	st := 0
+	e := len(s.TimeSlots)
+
+	// find the earliest timeslot for the range
+	// the repository should be sorting the timeslots by start date therefore
+	for st < e {
+		m := (st + e) / 2
+
+		// after the range
+		if s.TimeSlots[m].Start.After(end) {
+			e = m
+			continue
+		}
+
+		// before the range
+		if s.TimeSlots[m].Start.Before(start) {
+			st = m + 1
+			continue
+		}
+
+		// within the range
+
+		// if the one to the left is still within the area check it
+		if m > 0 && (s.TimeSlots[m-1].Start.After(start) || s.TimeSlots[m-1].Start.Equal(start)) {
+			e = m
+			continue
+		}
+
+		// no need to check right since we are looking for the earliest timeslot within the range
+		// if we got here m should be the earliest
+		timeSlotIdx = m
+		break
+	}
+
+	for timeSlotIdx < len(s.TimeSlots) {
+		ts := s.TimeSlots[timeSlotIdx]
+		timeSlotIdx++
+
+		if (ts.Start.After(start) || ts.Start.Equal(start)) && (ts.Start.Before(end) || ts.Start.Equal(end)) {
+			timeSlots = append(timeSlots, ts)
+			continue
+		}
+		// timeslots are ordered, no need to process more once we find one out of the range
+		if ts.Start.After(end) {
+			break
+		}
+
+	}
+	return timeSlots
+}
+
+func (s *Schedule) DayHasTimeSlot(t time.Time) bool {
+	startOfDay := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+	endOfDay := time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, int(time.Second-time.Nanosecond), t.Location())
+
+	timeslotsOnDay := s.GetTimeSlotsStartingWithinRange(startOfDay, endOfDay)
+
+	return len(timeslotsOnDay) > 0
+}
+
 type ScheduleService interface {
 	CreateSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability, limitToOneBookingPerUser bool) (*Schedule, error)
 	GetAllTimeSlots(scheduleId int64) ([]*TimeSlot, error)
