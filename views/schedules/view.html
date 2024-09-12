@@ -50,7 +50,7 @@
             <h6 class="text-slate-500 mb-4">Timezone: {{.Date.Format "MST"}}</h6>
             <ul class="grid grid-cols1 gap-4 ">
                 {{range .Schedule.TimeSlots}}
-                {{if eq $.Date.Day .Start.Day}}
+                {{if eq ($.Date.Format "2006-01-02 MST") (.Start.Format "2006-01-02 MST")}}
                 {{if .IsAvailable}}
                 <li class="p-4 bg-blue-500 text-white hover:bg-blue-700 cursor-pointer rounded shadow text-center"
                     hx-get="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/book" hx-target="#content-container">
