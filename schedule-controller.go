@@ -7,12 +7,12 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/gorilla/sessions"
+	"github.com/sqids/sqids-go"
 	"github.com/unrolled/render"
 )
 
@@ -25,13 +25,15 @@ type ScheduleControllerImpl struct {
 	render          *render.Render
 	router          *chi.Mux
 	cookieStore     *sessions.CookieStore
+	sqid            *sqids.Sqids
 }
 
-func NewScheduleController(scheduleService ScheduleService, cookieStore *sessions.CookieStore) ScheduleController {
+func NewScheduleController(scheduleService ScheduleService, cookieStore *sessions.CookieStore, sqid *sqids.Sqids) ScheduleController {
 	renderFuncMap := template.FuncMap{
 		"mod": func(i int, x int) int {
 			return i % x
-		}}
+		},
+	}
 	funcs := []template.FuncMap{renderFuncMap}
 	render := render.New(render.Options{Extensions: []string{".html"}, Layout: "layout", Directory: "views", Funcs: funcs})
 
@@ -40,6 +42,7 @@ func NewScheduleController(scheduleService ScheduleService, cookieStore *session
 		render:          render,
 		router:          chi.NewRouter(),
 		cookieStore:     cookieStore,
+		sqid:            sqid,
 	}
 }
 
@@ -195,9 +198,9 @@ func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.R
 func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.Request) {
 	auth0Profile, _ := getAuth0Profile(r) // since this is a protected route, we can assume the profile is there
 
-	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
+	scheduleId, err := c.getId(r, "scheduleId")
 	if err != nil {
-		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
+		http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
 		return
 	}
 
@@ -241,15 +244,15 @@ func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.
 func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.Request) {
 	auth0Profile, _ := getAuth0Profile(r) // protected route so can ignore error
 
-	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
+	scheduleId, err := c.getId(r, "scheduleId")
 	if err != nil {
-		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
+		http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
 		return
 	}
 
-	timeslotId, err := strconv.ParseInt(chi.URLParam(r, "timeslotId"), 10, 64)
+	timeslotId, err := c.getId(r, "timeslotId")
 	if err != nil {
-		http.Error(w, "Timeslot ID was not a valid int64", http.StatusBadRequest)
+		http.Error(w, "Timeslot ID was not valid", http.StatusBadRequest)
 		return
 	}
 
@@ -288,15 +291,15 @@ func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.R
 func (c *ScheduleControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Request) {
 	auth0Profile, _ := getAuth0Profile(r)
 
-	scheduleId, err := strconv.ParseInt(chi.URLParam(r, "scheduleId"), 10, 64)
+	scheduleId, err := c.getId(r, "scheduleId")
 	if err != nil {
-		http.Error(w, "Schedule ID was not a valid int64", http.StatusBadRequest)
+		http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
 		return
 	}
 
-	timeslotId, err := strconv.ParseInt(chi.URLParam(r, "timeslotId"), 10, 64)
+	timeslotId, err := c.getId(r, "timeslotId")
 	if err != nil {
-		http.Error(w, "Timeslot ID was not a valid int64", http.StatusBadRequest)
+		http.Error(w, "Timeslot ID was not valid", http.StatusBadRequest)
 		return
 	}
 
@@ -324,6 +327,18 @@ func (c *ScheduleControllerImpl) isAuthenticated(next http.Handler) http.Handler
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (c *ScheduleControllerImpl) getId(r *http.Request, key string) (int64, error) {
+	urlParam := chi.URLParam(r, key)
+	decodedId := c.sqid.Decode(urlParam)
+
+	reEncoded, err := c.sqid.Encode(decodedId)
+	if err != nil || urlParam != reEncoded || len(decodedId) != 1 {
+		return 0, fmt.Errorf("invalid %s", key)
+	}
+
+	return int64(decodedId[0]), nil
 }
 
 func getAuth0Profile(r *http.Request) (Auth0Profile, error) {

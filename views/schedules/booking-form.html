@@ -1,6 +1,6 @@
 <div class="flex flex-col mt-4 w-10/12 min-w-96 max-w-5xl bg-white rounded-md">
     <h3 class="font-semibold text-slate-700 text-3xl p-4">Book Timeslot</h3>
-    <form class="p-4 mt-4 flex flex-col" hx-post="/schedules/{{.Schedule.ID}}/timeslots/{{.TimeSlot.ID}}/book">
+    <form class="p-4 mt-4 flex flex-col" hx-post="/schedules/{{.Schedule.Sqid}}/timeslots/{{.TimeSlot.Sqid}}/book">
         <div class="flex flex-row items-baseline">
             <label class="text-gray-700 text-sm font-bold mb-2 px-4" for="name">Name</label>
             <input

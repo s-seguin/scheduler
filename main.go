@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/joho/godotenv"
+	"github.com/sqids/sqids-go"
 )
 
 func main() {
@@ -37,9 +38,14 @@ func main() {
 		log.Fatal("Error performing migrations ", err)
 	}
 
-	scheduleRepository := NewSQLScheduleRepository(db)
+	sqid, err := sqids.New(sqids.Options{MinLength: 6})
+	if err != nil {
+		log.Fatal("Issue initializing sqid")
+	}
+
+	scheduleRepository := NewSQLScheduleRepository(db, sqid)
 	scheduleService := NewScheduleService(scheduleRepository)
-	scheduleController := NewScheduleController(scheduleService, server.Store)
+	scheduleController := NewScheduleController(scheduleService, server.Store, sqid)
 
 	server.ServeStatic("/static", http.Dir("./public/static"))
 	server.MountRouter("/", scheduleController.MountRoutes())

@@ -4,7 +4,7 @@
         <ul class="mb-4 p-4 text-left">
             {{range .Schedules}}
             <li class="mb-2">
-                <a href="/schedules/{{.ID}}" class="text-blue-500 hover:underline">{{.Name}}</a>
+                <a href="/schedules/{{.Sqid}}" class="text-blue-500 hover:underline">{{.Name}}</a>
             </li>
             {{else}}
             <li class="text-red-500">No schedules found</li>

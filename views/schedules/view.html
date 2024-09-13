@@ -5,10 +5,11 @@
             <h5 class="text-slate-700 text-lg mb-4">Select a Date and Time</h5>
             <div class="grid items-center justify-center border w-fit h-96 rounded p-4 ">
                 <div class="grid justify-center items-baseline grid-cols-3">
-                    <button hx-get="/schedules/{{.Schedule.ID}}?date={{.PreviousMonth}}" hx-target="#content-container"
+                    <button hx-get="/schedules/{{.Schedule.Sqid}}?date={{.PreviousMonth}}"
+                        hx-target="#content-container"
                         class="bg-slate-100 text-slate-400 px-2 py-2 rounded-md  hover:bg-slate-200">Prev</button>
                     <p class="text-center text-slate-700 text-xl pb-6">{{.Date.Format "January"}}</p>
-                    <button hx-get="/schedules/{{.Schedule.ID}}?date={{.NextMonth}}" hx-target="#content-container"
+                    <button hx-get="/schedules/{{.Schedule.Sqid}}?date={{.NextMonth}}" hx-target="#content-container"
                         class="bg-slate-100 text-slate-400 px-2 py-2 rounded-md hover:bg-slate-200">Next</button>
                 </div>
                 <div class="grid gap-2 w-full h-full grid-cols-7 items-center">
@@ -30,7 +31,7 @@
                         {{$day.Time.Day}}
                     </button>
                     {{else}}
-                    <button hx-get="/schedules/{{$.Schedule.ID}}?date={{$day.Time}}" hx-target="#content-container"
+                    <button hx-get="/schedules/{{$.Schedule.Sqid}}?date={{$day.Time}}" hx-target="#content-container"
                         hx-push-url="true"
                         class="text-center py-2 px-2 w-10 h-10  bg-blue-500 text-white hover:bg-blue-700 cursor-pointer rounded-full shadow-md">
                         {{$day.Time.Day}}
@@ -53,7 +54,7 @@
                 {{if eq ($.Date.Format "2006-01-02 MST") (.Start.Format "2006-01-02 MST")}}
                 {{if .IsAvailable}}
                 <li class="p-4 bg-blue-500 text-white hover:bg-blue-700 cursor-pointer rounded shadow text-center"
-                    hx-get="/schedules/{{$.Schedule.ID}}/timeslots/{{.ID}}/book" hx-target="#content-container">
+                    hx-get="/schedules/{{$.Schedule.Sqid}}/timeslots/{{.Sqid}}/book" hx-target="#content-container">
                     {{.Start.Format "3:04 pm"}}
                 </li>
                 {{else}}

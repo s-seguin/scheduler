@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sqids/sqids-go"
 )
 
 // todo -- use context for all methods
@@ -27,12 +29,14 @@ type ScheduleRepository interface {
 type SQLScheduleRepository struct {
 	DB         *sql.DB
 	dateLayout string
+	sqid       sqids.Sqids
 }
 
-func NewSQLScheduleRepository(db *sql.DB) ScheduleRepository {
+func NewSQLScheduleRepository(db *sql.DB, sqid *sqids.Sqids) ScheduleRepository {
 	return &SQLScheduleRepository{
 		DB:         db,
 		dateLayout: "2006-01-02 15:04:05-07:00",
+		sqid:       *sqid,
 	}
 }
 
@@ -131,8 +135,14 @@ func (r *SQLScheduleRepository) FindAll(ctx context.Context, createdBy string) (
 			return nil, fmt.Errorf("error parsing updatedOn: %w", err)
 		}
 
+		scheduleSqid, err := r.sqid.Encode([]uint64{uint64(scheduleId)})
+		if err != nil {
+			return nil, err
+		}
+
 		schedules = append(schedules, &Schedule{
 			ID:                       scheduleId,
+			Sqid:                     scheduleSqid,
 			Name:                     name,
 			CreatedBy:                createdBy,
 			CreatedOn:                createdOnTime,
@@ -285,9 +295,15 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 			return nil, fmt.Errorf("error parsing tsUpdatedOn: %w", err)
 		}
 
+		timeslotSqid, err := r.sqid.Encode([]uint64{uint64(timeSlotId.Int64)})
+		if err != nil {
+			return nil, fmt.Errorf("error encoding timeslot sqid: %w", err)
+		}
+
 		if !bookingId.Valid {
 			timeslots = append(timeslots, &TimeSlot{
 				ID:        timeSlotId.Int64,
+				Sqid:      timeslotSqid,
 				Start:     startTime,
 				End:       endTime,
 				CreatedOn: tsCreatedOnTime,
@@ -306,14 +322,21 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 			return nil, fmt.Errorf("error parsing bookingUpdatedOn: %w", err)
 		}
 
+		bookingSqid, err := r.sqid.Encode([]uint64{uint64(bookingId.Int64)})
+		if err != nil {
+			return nil, fmt.Errorf("error encoding timeslot sqid: %w", err)
+		}
+
 		timeslots = append(timeslots, &TimeSlot{
 			ID:        timeSlotId.Int64,
+			Sqid:      timeslotSqid,
 			Start:     startTime,
 			End:       endTime,
 			CreatedOn: tsCreatedOnTime,
 			UpdatedOn: tsUpdatedOnTime,
 			Booking: &Booking{
 				ID:          bookingId.Int64,
+				Sqid:        bookingSqid,
 				TimeSlot:    nil,
 				BookerName:  bookerName.String,
 				BookerEmail: bookerEmail.String,
@@ -353,8 +376,14 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 		return nil, err
 	}
 
+	scheduleSqid, err := r.sqid.Encode([]uint64{uint64(scheduleId)})
+	if err != nil {
+		return nil, err
+	}
+
 	return &Schedule{
 		ID:                       scheduleId,
+		Sqid:                     scheduleSqid,
 		Name:                     name,
 		CreatedBy:                createdBy,
 		CreatedOn:                createdOnTime,
@@ -563,6 +592,11 @@ func (r *SQLScheduleRepository) parseTimeSlotSqlRows(rows *sql.Rows) ([]*TimeSlo
 			return nil, err
 		}
 
+		timeslotSqid, err := r.sqid.Encode([]uint64{uint64(id)})
+		if err != nil {
+			return nil, fmt.Errorf("error encoding timeslot sqid: %w", err)
+		}
+
 		if bookingId.Valid {
 			bookingCreatedOnTime, err := time.Parse(r.dateLayout, bookingCreatedOn.String)
 			if err != nil {
@@ -574,14 +608,21 @@ func (r *SQLScheduleRepository) parseTimeSlotSqlRows(rows *sql.Rows) ([]*TimeSlo
 				return nil, err
 			}
 
+			bookingSqid, err := r.sqid.Encode([]uint64{uint64(bookingId.Int64)})
+			if err != nil {
+				return nil, fmt.Errorf("error encoding booking sqid: %w", err)
+			}
+
 			timeslots = append(timeslots, &TimeSlot{
 				ID:        id,
+				Sqid:      timeslotSqid,
 				Start:     startTime,
 				End:       endTime,
 				CreatedOn: createdOnTime,
 				UpdatedOn: updatedOnTime,
 				Booking: &Booking{
 					ID:          bookingId.Int64,
+					Sqid:        bookingSqid,
 					TimeSlot:    nil,
 					BookerName:  bookerName.String,
 					BookerEmail: bookerEmail.String,
@@ -593,6 +634,7 @@ func (r *SQLScheduleRepository) parseTimeSlotSqlRows(rows *sql.Rows) ([]*TimeSlo
 		}
 		timeslots = append(timeslots, &TimeSlot{
 			ID:        id,
+			Sqid:      timeslotSqid,
 			Start:     startTime,
 			End:       endTime,
 			CreatedOn: createdOnTime,
@@ -640,8 +682,14 @@ func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int
 		return err
 	}
 
+	bookingSqid, err := r.sqid.Encode([]uint64{uint64(bookingId)})
+	if err != nil {
+		return fmt.Errorf("error encoding booking sqid: %w", err)
+	}
+
 	timeslot.Booking = &Booking{
 		ID:          bookingId,
+		Sqid:        bookingSqid,
 		TimeSlot:    timeslot,
 		BookerName:  bookerName,
 		BookerEmail: bookerEmail,
@@ -733,15 +781,26 @@ func (r *SQLScheduleRepository) parseBookingSqlRows(rows *sql.Rows) ([]*Booking,
 			return nil, err
 		}
 
+		bookingSqid, err := r.sqid.Encode([]uint64{uint64(bookingId)})
+		if err != nil {
+			return nil, fmt.Errorf("error encoding booking sqid: %w", err)
+		}
+
 		if !timeSlotId.Valid {
 			bookings = append(bookings, &Booking{
 				ID:          bookingId,
+				Sqid:        bookingSqid,
 				BookerName:  bookerName,
 				BookerEmail: bookerEmail,
 				CreatedOn:   createdOnTime,
 				UpdatedOn:   updatedOnTime,
 			})
 			continue
+		}
+
+		timeslotSqid, err := r.sqid.Encode([]uint64{uint64(timeSlotId.Int64)})
+		if err != nil {
+			return nil, fmt.Errorf("error encoding timeslot sqid: %w", err)
 		}
 
 		startTime, err := time.Parse(r.dateLayout, start)
@@ -766,12 +825,14 @@ func (r *SQLScheduleRepository) parseBookingSqlRows(rows *sql.Rows) ([]*Booking,
 
 		bookings = append(bookings, &Booking{
 			ID:          bookingId,
+			Sqid:        bookingSqid,
 			BookerName:  bookerName,
 			BookerEmail: bookerEmail,
 			CreatedOn:   createdOnTime,
 			UpdatedOn:   updatedOnTime,
 			TimeSlot: &TimeSlot{
 				ID:        timeSlotId.Int64,
+				Sqid:      timeslotSqid,
 				Start:     startTime,
 				End:       endTime,
 				CreatedOn: timeSlotCreatedOnTime,

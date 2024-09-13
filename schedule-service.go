@@ -85,14 +85,16 @@ func NewAvailabilityBlock(startHour int, startMin int, endHour int, endMin int) 
 }
 
 type AvailabilityBlock struct {
-	ID        int64 `json:"id"`
-	StartHour int   `json:"startHour"`
-	StartMin  int   `json:"startMin"`
-	EndHour   int   `json:"endHour"`
-	EndMin    int   `json:"endMin"`
+	ID        int64  `json:"id"`
+	Sqid      string `json:"sqid"`
+	StartHour int    `json:"startHour"`
+	StartMin  int    `json:"startMin"`
+	EndHour   int    `json:"endHour"`
+	EndMin    int    `json:"endMin"`
 }
 type WeeklyAvailability struct {
 	ID        int64                `json:"id"`
+	Sqid      string               `json:"sqid"`
 	Sunday    []*AvailabilityBlock `json:"sunday"`
 	Monday    []*AvailabilityBlock `json:"monday"`
 	Tuesday   []*AvailabilityBlock `json:"tuesday"`
@@ -148,6 +150,7 @@ func (a *WeeklyAvailability) AddAvailabilityForDay(day time.Weekday, availabilit
 
 type TimeSlot struct {
 	ID        int64     `json:"id"`
+	Sqid      string    `json:"sqid"`
 	Start     time.Time `json:"start"`
 	End       time.Time `json:"end"`
 	Booking   *Booking  `json:"booking"`
@@ -169,6 +172,7 @@ func (t *TimeSlot) IsAvailable() bool {
 // todo -- can probably remove the reference to TimeSlot here
 type Booking struct {
 	ID          int64     `json:"id"`
+	Sqid        string    `json:"sqid"`
 	TimeSlot    *TimeSlot `json:"timeSlot"`
 	BookerName  string    `json:"bookerName"`
 	BookerEmail string    `json:"bookerEmail"`
@@ -187,6 +191,7 @@ func NewBooking(timeSlot *TimeSlot, bookerName string, bookerEmail string) *Book
 // later this can hold the public url etc...
 type Schedule struct {
 	ID                       int64               `json:"id"`
+	Sqid                     string              `json:"sqid"`
 	Name                     string              `json:"name"`
 	Timezone                 string              `json:"timezone"`
 	Start                    time.Time           `json:"start"`
