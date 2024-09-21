@@ -58,14 +58,16 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 	})
 
 	c.router.Route("/schedules", func(r chi.Router) {
-		r.Use(c.isAuthenticated)
+		// r.Use(c.isAuthenticated)
 
-		r.Get("/", c.getSchedules)
-		r.Get("/new", c.getScheduleForm)
-		r.Post("/", c.createSchedule)
-		r.Get("/{scheduleId}", c.getScheduleById)
-		r.Get("/{scheduleId}/timeslots/{timeslotId}/book", c.getBookingForm)
-		r.Post("/{scheduleId}/timeslots/{timeslotId}/book", c.bookTimeslot)
+		r.With(c.isAuthenticated).Get("/", c.getSchedules)
+		r.With(c.isAuthenticated).Get("/new", c.getScheduleForm)
+		r.With(c.isAuthenticated).Post("/", c.createSchedule)
+		r.With(c.isAuthenticated).With(c.isScheduleOwner).Patch("/{scheduleId}", c.updateSchedule)
+
+		r.With(c.isOwnerOrScheduleIsShared).Get("/{scheduleId}", c.getScheduleById)
+		r.With(c.isAuthenticated).Get("/{scheduleId}/timeslots/{timeslotId}/book", c.getBookingForm)
+		r.With(c.isAuthenticated).Post("/{scheduleId}/timeslots/{timeslotId}/book", c.bookTimeslot)
 	})
 
 	return c.router
@@ -103,6 +105,7 @@ func (c *ScheduleControllerImpl) getSchedules(w http.ResponseWriter, r *http.Req
 
 	schedules, err := c.scheduleService.FindAll(createdBy)
 	if err != nil {
+		fmt.Println(err)
 		http.Error(w, "Error getting schedules", http.StatusInternalServerError)
 		return
 	}
@@ -114,6 +117,32 @@ func (c *ScheduleControllerImpl) getScheduleForm(w http.ResponseWriter, r *http.
 	auth0Profile, _ := getAuth0Profile(r)
 
 	c.render.HTML(w, http.StatusOK, "schedules/new", &SchedulesViewModel{Schedules: nil, User: auth0Profile}, overrideLayoutIfHtmx(r))
+}
+
+func (c *ScheduleControllerImpl) updateSchedule(w http.ResponseWriter, r *http.Request) {
+	auth0Profile, _ := getAuth0Profile(r)
+
+	scheduleId, err := c.getIdFromSqid(r, "scheduleId")
+	if err != nil {
+		http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
+		return
+	}
+
+	schedule, err := c.scheduleService.FindById(scheduleId)
+	if err != nil {
+		http.Error(w, "Schedule not found", http.StatusNotFound)
+	}
+
+	isSharedFormValue := r.FormValue("isSharedCheckbox")
+	if isSharedFormValue != "" || (schedule.IsShared && isSharedFormValue == "") {
+		isShared := isSharedFormValue == "on"
+		schedule.IsShared = isShared
+
+		err = c.scheduleService.UpdateSchedulePublicShareStatus(scheduleId, auth0Profile.Sub, isShared)
+	}
+
+	c.getScheduleById(w, r)
+
 }
 
 func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.Request) {
@@ -197,8 +226,9 @@ func (c *ScheduleControllerImpl) createSchedule(w http.ResponseWriter, r *http.R
 
 func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.Request) {
 	auth0Profile, _ := getAuth0Profile(r) // since this is a protected route, we can assume the profile is there
+	fmt.Printf("auth0Profile %+v\n", auth0Profile)
 
-	scheduleId, err := c.getId(r, "scheduleId")
+	scheduleId, err := c.getIdFromSqid(r, "scheduleId")
 	if err != nil {
 		http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
 		return
@@ -244,13 +274,13 @@ func (c *ScheduleControllerImpl) getScheduleById(w http.ResponseWriter, r *http.
 func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.Request) {
 	auth0Profile, _ := getAuth0Profile(r) // protected route so can ignore error
 
-	scheduleId, err := c.getId(r, "scheduleId")
+	scheduleId, err := c.getIdFromSqid(r, "scheduleId")
 	if err != nil {
 		http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
 		return
 	}
 
-	timeslotId, err := c.getId(r, "timeslotId")
+	timeslotId, err := c.getIdFromSqid(r, "timeslotId")
 	if err != nil {
 		http.Error(w, "Timeslot ID was not valid", http.StatusBadRequest)
 		return
@@ -291,13 +321,13 @@ func (c *ScheduleControllerImpl) getBookingForm(w http.ResponseWriter, r *http.R
 func (c *ScheduleControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Request) {
 	auth0Profile, _ := getAuth0Profile(r)
 
-	scheduleId, err := c.getId(r, "scheduleId")
+	scheduleId, err := c.getIdFromSqid(r, "scheduleId")
 	if err != nil {
 		http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
 		return
 	}
 
-	timeslotId, err := c.getId(r, "timeslotId")
+	timeslotId, err := c.getIdFromSqid(r, "timeslotId")
 	if err != nil {
 		http.Error(w, "Timeslot ID was not valid", http.StatusBadRequest)
 		return
@@ -321,6 +351,8 @@ func (c *ScheduleControllerImpl) isAuthenticated(next http.Handler) http.Handler
 		profile, err := getAuth0Profile(r)
 		if err != nil || profile.IsExpired() {
 			// http.Error(w, "unauthorized", http.StatusUnauthorized)
+			fmt.Println("unauthorized -- redirecting to login")
+			// fixme -- why isn't this properly redirecting?
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
@@ -329,12 +361,63 @@ func (c *ScheduleControllerImpl) isAuthenticated(next http.Handler) http.Handler
 	})
 }
 
-func (c *ScheduleControllerImpl) getId(r *http.Request, key string) (int64, error) {
+func (c *ScheduleControllerImpl) isScheduleOwner(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		profile, _ := getAuth0Profile(r)
+
+		scheduleId, err := c.getIdFromSqid(r, "scheduleId")
+		if err != nil {
+			fmt.Println(err)
+			http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
+			return
+		}
+
+		schedule, err := c.scheduleService.FindById(scheduleId)
+		if err != nil {
+			http.Error(w, "Schedule not found", http.StatusBadRequest)
+		}
+
+		if !isScheduleOwner(&profile, schedule) {
+			http.Error(w, "You do not have permission to view this schedule", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (c *ScheduleControllerImpl) isOwnerOrScheduleIsShared(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		scheduleId, err := c.getIdFromSqid(r, "scheduleId")
+		if err != nil {
+			http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
+			return
+		}
+
+		schedule, err := c.scheduleService.FindById(scheduleId)
+		if err != nil {
+			http.Error(w, "Schedule not found", http.StatusBadRequest)
+			return
+		}
+
+		profile, _ := getAuth0Profile(r)
+
+		if !schedule.IsShared && !isScheduleOwner(&profile, schedule) {
+			http.Error(w, "You do not have permission to view this schedule", http.StatusForbidden)
+			return
+
+		}
+		// todo -- implement
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (c *ScheduleControllerImpl) getIdFromSqid(r *http.Request, key string) (int64, error) {
 	urlParam := chi.URLParam(r, key)
 	decodedId := c.sqid.Decode(urlParam)
 
 	reEncoded, err := c.sqid.Encode(decodedId)
 	if err != nil || urlParam != reEncoded || len(decodedId) != 1 {
+		fmt.Printf("err %s, decoded %v, urlParam %s, reEncoded %s\n", err, decodedId, urlParam, reEncoded)
 		return 0, fmt.Errorf("invalid %s", key)
 	}
 
@@ -360,4 +443,8 @@ func overrideLayoutIfHtmx(r *http.Request) render.HTMLOptions {
 func isHtmxRequest(r *http.Request) bool {
 	hxReqHeader := r.Header["Hx-Request"]
 	return len(hxReqHeader) == 1 && strings.ToLower(hxReqHeader[0]) == "true"
+}
+
+func isScheduleOwner(profile *Auth0Profile, schedule *Schedule) bool {
+	return schedule.CreatedBy == profile.Sub
 }

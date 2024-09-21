@@ -203,6 +203,7 @@ type Schedule struct {
 	UpdatedOn                time.Time           `json:"updatedOn"`
 	TimeSlots                []*TimeSlot         `json:"timeSlots"`
 	LimitToOneBookingPerUser bool                `json:"limitToSingleBookingPerUser"`
+	IsShared                 bool                `json:"hasBeenShared"`
 }
 
 func NewSchedule(name string, createdBy string, start time.Time, end time.Time, weeklyAvailability *WeeklyAvailability, limitToOneBookingPerUser bool) *Schedule {
@@ -215,6 +216,7 @@ func NewSchedule(name string, createdBy string, start time.Time, end time.Time, 
 		Timezone:                 time.Local.String(),
 		WeeklyAvailability:       weeklyAvailability,
 		LimitToOneBookingPerUser: limitToOneBookingPerUser,
+		IsShared:                 false,
 	}
 }
 
@@ -324,6 +326,7 @@ type ScheduleService interface {
 	GetTimeSlotsWithinRange(scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error)
 	FindAll(createdBy string) ([]*Schedule, error)
 	FindById(id int64) (*Schedule, error)
+	UpdateSchedulePublicShareStatus(id int64, requestingUser string, isSharedPublicly bool) error
 	GetBookingsForUser(scheduleId int64, bookerEmail string) ([]*Booking, error)
 	BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (timeslot *TimeSlot, err error)
 }
@@ -356,6 +359,24 @@ func (s *ScheduleServiceImpl) CreateSchedule(name string, createdBy string, star
 	}
 
 	return schedule, nil
+}
+
+func (s *ScheduleServiceImpl) UpdateSchedulePublicShareStatus(id int64, requestingUser string, isSharedPublicly bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	schedule, err := s.repository.FindById(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if schedule.CreatedBy != requestingUser {
+		return errors.New("user does not have permission to update schedule")
+	}
+
+	schedule.IsShared = isSharedPublicly
+
+	return s.repository.Update(ctx, schedule)
 }
 
 func (s *ScheduleServiceImpl) FindAll(createdBy string) ([]*Schedule, error) {

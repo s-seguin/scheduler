@@ -87,6 +87,7 @@ func createScheduleTable(db *sql.DB) error {
 			timeSlotDurationMin INTEGER,
 			timezone TEXT,
 			limitToOneBookingPerUser BOOLEAN,
+			isShared BOOLEAN,
 			sundayAvailability TEXT,
 			mondayAvailability TEXT,
 			tuesdayAvailability TEXT,

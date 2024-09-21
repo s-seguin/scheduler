@@ -1,16 +1,61 @@
+{{if eq .Schedule.CreatedBy .User.Sub}}
+<div class="flex flex-col mt-4 w-full bg-white rounded-md p-4">
+    <div class="flex items-center">
+        <span class="text-slate-500 text-sm mr-2">Enable public timeslot booking</span>
+        <label class="relative inline-flex cursor-pointer items-center">
+            <input name="isSharedCheckbox" type="checkbox" class="peer sr-only" hx-trigger="change"
+                hx-patch="/schedules/{{.Schedule.Sqid}}" hx-target="#content-container" {{if .Schedule.IsShared }}
+                checked {{end}} />
+            <div
+                class="peer h-5 w-9 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-500 peer-checked:after:translate-x-full">
+            </div>
+        </label>
+        <button type="button"
+            onclick="navigator.clipboard.writeText(`http://${window.location.host}` + '/schedules/{{.Schedule.Sqid}}')"
+            {{ if not .Schedule.IsShared }} disabled {{end}}
+            class="text-slate-500 bg-slate-100 hover:bg-slate-200 hover:cursor-pointer disabled:cursor-not-allowed disabled:text-slate-300 disabled:bg-slate-50 rounded text-sm p-2 text-center inline-flex items-center ml-auto">
+            <svg class="w-4 h-4 me-2 " aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor"
+                viewBox="0 0 14 14">
+                <path
+                    d="M4.715 6.542 3.343 7.914a3 3 0 1 0 4.243 4.243l1.828-1.829A3 3 0 0 0 8.586 5.5L8 6.086a1 1 0 0 0-.154.199 2 2 0 0 1 .861 3.337L6.88 11.45a2 2 0 1 1-2.83-2.83l.793-.792a4 4 0 0 1-.128-1.287z" />
+                <path
+                    d="M6.586 4.672A3 3 0 0 0 7.414 9.5l.775-.776a2 2 0 0 1-.896-3.346L9.12 3.55a2 2 0 1 1 2.83 2.83l-.793.792c.112.42.155.855.128 1.287l1.372-1.372a3 3 0 1 0-4.243-4.243z" />
+            </svg>
+            Copy share link
+        </button>
+    </div>
+</div>
+{{end}}
 <div class="flex flex-col mt-4 w-full bg-white rounded-md p-4">
     <h3 class="font-semibold text-slate-700 text-3xl mb-4 text-left">{{.Schedule.Name}} </h3>
     <div class="w-full grid grid-cols-1 sm:grid-cols-2">
         <div class="mt-4">
             <h5 class="text-slate-700 text-lg mb-4">Select a Date and Time</h5>
             <div class="grid items-center justify-center border w-fit h-96 rounded p-4 ">
-                <div class="grid justify-center items-baseline grid-cols-3">
-                    <button hx-get="/schedules/{{.Schedule.Sqid}}?date={{.PreviousMonth}}"
+                <div class="grid justify-center items-center pb-4 grid-cols-3">
+                    <!-- <div class="grid justify-center items-baseline grid-cols-3"> -->
+                    <!-- <button hx-get="/schedules/{{.Schedule.Sqid}}?date={{.PreviousMonth}}"
                         hx-target="#content-container"
                         class="bg-slate-100 text-slate-400 px-2 py-2 rounded-md  hover:bg-slate-200">Prev</button>
                     <p class="text-center text-slate-700 text-xl pb-6">{{.Date.Format "January"}}</p>
                     <button hx-get="/schedules/{{.Schedule.Sqid}}?date={{.NextMonth}}" hx-target="#content-container"
-                        class="bg-slate-100 text-slate-400 px-2 py-2 rounded-md hover:bg-slate-200">Next</button>
+                        class="bg-slate-100 text-slate-400 px-2 py-2 rounded-md hover:bg-slate-200">Next</button> -->
+                    <button hx-get="/schedules/{{.Schedule.Sqid}}?date={{.PreviousMonth}}"
+                        hx-target="#content-container"
+                        class="bg-slate-100 text-slate-400 px-2 py-2 rounded-full w-10 h-10 shadow-md hover:bg-slate-200 mr-auto">
+                        <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    <p class="text-center text-slate-700 text-xl ">{{.Date.Format "January"}}</p>
+                    <button hx-get="/schedules/{{.Schedule.Sqid}}?date={{.NextMonth}}" hx-target="#content-container"
+                        class="bg-slate-100 text-slate-400 px-2 py-2 rounded-full w-10 h-10 shadow-md hover:bg-slate-200 ml-auto">
+                        <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
                 </div>
                 <div class="grid gap-2 w-full h-full grid-cols-7 items-center">
                     <p class="text-center text-slate-700 pb-6">Su</p>
@@ -27,7 +72,7 @@
                     <div></div>
                     {{else if $day.HasAvailableAppointment}}
                     {{if eq $.Date.Day $day.Time.Day}}
-                    <button disabled class="text-center py-2 px-2 w-10 h-10  bg-slate-400 text-slate-600 rounded-full">
+                    <button disabled class="text-center py-2 px-2 w-10 h-10  bg-slate-400 text-white rounded-full">
                         {{$day.Time.Day}}
                     </button>
                     {{else}}

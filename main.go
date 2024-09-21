@@ -23,7 +23,7 @@ func main() {
 
 	// todo -- either flag this or delete it
 	// log.Println("Deleting test db")
-	// DeleteTestDb()
+	//	DeleteTestDb()
 
 	log.Println("Creating db")
 	db, err := CreateDb("./_sqlite/scheduler.db")

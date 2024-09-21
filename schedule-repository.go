@@ -104,7 +104,7 @@ func parseDailyAvailability(availability string) ([]*AvailabilityBlock, error) {
 
 func (r *SQLScheduleRepository) FindAll(ctx context.Context, createdBy string) ([]*Schedule, error) {
 	// todo -- this is missing timeslots and bookings
-	rows, err := r.DB.QueryContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn, limitToOneBookingPerUser FROM schedule WHERE createdBy = ?`, createdBy)
+	rows, err := r.DB.QueryContext(ctx, `SELECT id, name, createdBy, createdOn, updatedOn, limitToOneBookingPerUser, isShared FROM schedule WHERE createdBy = ?`, createdBy)
 	if err != nil {
 		return nil, err
 	}
@@ -119,8 +119,9 @@ func (r *SQLScheduleRepository) FindAll(ctx context.Context, createdBy string) (
 		var createdOn string
 		var updatedOn string
 		var limitToOneBookingPerUser bool
+		var isShared bool
 
-		err := rows.Scan(&scheduleId, &name, &createdBy, &createdOn, &updatedOn, &limitToOneBookingPerUser)
+		err := rows.Scan(&scheduleId, &name, &createdBy, &createdOn, &updatedOn, &limitToOneBookingPerUser, &isShared)
 		if err != nil {
 			return nil, err
 		}
@@ -148,6 +149,7 @@ func (r *SQLScheduleRepository) FindAll(ctx context.Context, createdBy string) (
 			CreatedOn:                createdOnTime,
 			UpdatedOn:                updatedOnTime,
 			LimitToOneBookingPerUser: limitToOneBookingPerUser,
+			IsShared:                 isShared,
 		})
 	}
 
@@ -162,6 +164,7 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 			s.timezone, 
 			s.timeSlotDurationMin,
 			s.limitToOneBookingPerUser,
+			s.isShared,
 			s.sundayAvailability,
 			s.mondayAvailability,
 			s.tuesdayAvailability,
@@ -197,6 +200,7 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 	var timezone string
 	var timeSlotDurationMin int64
 	var limitToOneBookingPerUser bool
+	var isShared bool
 	var sundayAvailability string
 	var mondayAvailability string
 	var tuesdayAvailability string
@@ -236,6 +240,7 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 			&timezone,
 			&timeSlotDurationMin,
 			&limitToOneBookingPerUser,
+			&isShared,
 			&sundayAvailability,
 			&mondayAvailability,
 			&tuesdayAvailability,
@@ -389,6 +394,7 @@ func (r *SQLScheduleRepository) FindById(ctx context.Context, id int64) (*Schedu
 		CreatedOn:                createdOnTime,
 		UpdatedOn:                updatedOnTime,
 		LimitToOneBookingPerUser: limitToOneBookingPerUser,
+		IsShared:                 isShared,
 		TimeSlots:                timeslots,
 		WeeklyAvailability: &WeeklyAvailability{
 			Sunday:    sundayAvailabilityBlocks,
@@ -430,6 +436,7 @@ func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) e
 					timezone, 
 					timeslotDurationMin,
 					limitToOneBookingPerUser,
+					isShared,
 					sundayAvailability, 
 					mondayAvailability, 
 					tuesdayAvailability, 
@@ -440,13 +447,14 @@ func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) e
 					createdBy, 
 					createdOn, 
 					updatedOn
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				) VALUES (?, ?, ?, ?, ?,? , ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		schedule.Name,
 		schedule.Start,
 		schedule.End,
 		schedule.Timezone,
 		schedule.TimeSlotDuration.Minutes(),
 		schedule.LimitToOneBookingPerUser,
+		schedule.IsShared,
 		sundayAvailability,
 		mondayAvailability,
 		tuesdayAvailability,
@@ -483,6 +491,54 @@ func (r *SQLScheduleRepository) Store(ctx context.Context, schedule *Schedule) e
 }
 
 func (r *SQLScheduleRepository) Update(ctx context.Context, schedule *Schedule) error {
+	fmt.Println("updating schedule")
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // defer rollback incase anything fails
+
+	res, err := r.DB.ExecContext(ctx,
+		`UPDATE schedule 
+		SET
+			name = ?,
+			start = ?,
+			end = ?,
+			timezone = ?,
+			timeslotDurationMin = ?,
+			limitToOneBookingPerUser = ?,
+			isShared = ?,
+			updatedOn = ?
+		WHERE id = ?
+		`,
+		schedule.Name,
+		schedule.Start,
+		schedule.End,
+		schedule.Timezone,
+		schedule.TimeSlotDuration.Minutes(),
+		schedule.LimitToOneBookingPerUser,
+		schedule.IsShared,
+		time.Now(),
+		schedule.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected > 1 {
+		return fmt.Errorf("more than one row affected")
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
