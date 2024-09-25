@@ -350,9 +350,13 @@ func (c *ScheduleControllerImpl) isAuthenticated(next http.Handler) http.Handler
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		profile, err := getAuth0Profile(r)
 		if err != nil || profile.IsExpired() {
-			// http.Error(w, "unauthorized", http.StatusUnauthorized)
 			fmt.Println("unauthorized -- redirecting to login")
-			// fixme -- why isn't this properly redirecting?
+
+			// todo -- should we store the keys below globally?
+			session, _ := c.cookieStore.Get(r, "auth-session")
+			session.Values["callback-uri"] = r.RequestURI
+			_ = session.Save(r, w)
+
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}

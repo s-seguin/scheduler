@@ -127,8 +127,16 @@ func (s *Server) MountAuthRoutes() {
 			return
 		}
 
+		redirectUri := ""
+		callbackUri, ok := session.Values["callback-uri"].(string)
+		if ok && callbackUri != "" {
+			fmt.Printf("Found callback uri, redirecting to: %s\n", callbackUri)
+			redirectUri = callbackUri
+		}
+
 		session.Values["access_token"] = oauth2Token.AccessToken
 		session.Values["profile"] = profile
+		session.Values["callback-uri"] = ""
 		err = session.Save(r, w)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -137,7 +145,7 @@ func (s *Server) MountAuthRoutes() {
 
 		fmt.Printf("profile: %+v\n", profile)
 
-		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, redirectUri, http.StatusTemporaryRedirect)
 	})
 
 	s.Router.Get("/logout", func(w http.ResponseWriter, r *http.Request) {
