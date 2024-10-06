@@ -14,7 +14,8 @@
                 type="email" name="email" placeholder="Your email" />
         </div>
         <div>
-            <button type="cancel" hx-get="" hx-target="#content-container">Back</button>
+            <button type="cancel" hx-get="/schedules/{{.Schedule.Sqid}}" hx-target="#content-container"
+                hx-push-url="true">Back</button>
             <button class="m-4 mt-8 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700 transition duration-300"
                 type="submit">Book</button>
         </div>

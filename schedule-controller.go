@@ -68,6 +68,8 @@ func (c *ScheduleControllerImpl) MountRoutes() *chi.Mux {
 		r.With(c.isOwnerOrScheduleIsShared).Get("/{scheduleId}", c.getScheduleById)
 		r.With(c.isAuthenticated).Get("/{scheduleId}/timeslots/{timeslotId}/book", c.getBookingForm)
 		r.With(c.isAuthenticated).Post("/{scheduleId}/timeslots/{timeslotId}/book", c.bookTimeslot)
+
+		r.With(c.isAuthenticated).Delete("/{scheduleId}/bookings/{bookingId}", c.cancelBooking)
 	})
 
 	return c.router
@@ -344,6 +346,44 @@ func (c *ScheduleControllerImpl) bookTimeslot(w http.ResponseWriter, r *http.Req
 	}
 
 	c.render.HTML(w, http.StatusOK, "schedules/booked-partial", &TimeSlotBookingViewModel{TimeSlot: timeslot, Schedule: &Schedule{ID: scheduleId}, User: auth0Profile}, overrideLayoutIfHtmx(r))
+}
+
+func (c *ScheduleControllerImpl) cancelBooking(w http.ResponseWriter, r *http.Request) {
+	auth0Profile, _ := getAuth0Profile(r)
+
+	scheduleId, err := c.getIdFromSqid(r, "scheduleId")
+	if err != nil {
+		http.Error(w, "Schedule ID was not valid", http.StatusBadRequest)
+		return
+	}
+
+	bookingId, err := c.getIdFromSqid(r, "bookingId")
+	if err != nil {
+		http.Error(w, "Booking ID was not valid", http.StatusBadRequest)
+		return
+	}
+
+	booking, err := c.scheduleService.GetBookingById(bookingId)
+	if err != nil {
+		http.Error(w, "Error getting booking", http.StatusInternalServerError)
+		return
+	}
+
+	timeslot := booking.TimeSlot
+
+	err = c.scheduleService.CancelBooking(scheduleId, bookingId, auth0Profile)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "Error cancelling booking", http.StatusInternalServerError)
+		return
+	}
+
+	if isHtmxRequest(r) {
+		c.render.HTML(w, http.StatusOK, "schedules/cancelled-partial", TimeSlotBookingViewModel{Schedule: &Schedule{ID: scheduleId}, TimeSlot: timeslot, User: auth0Profile}, overrideLayoutIfHtmx(r))
+	} else {
+		http.Redirect(w, r, fmt.Sprintf("/schedules/%s?date=%s", chi.URLParam(r, "scheduleId"), timeslot.Start), http.StatusFound)
+	}
+
 }
 
 func (c *ScheduleControllerImpl) isAuthenticated(next http.Handler) http.Handler {

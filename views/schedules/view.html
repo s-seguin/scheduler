@@ -103,9 +103,23 @@
                     {{.Start.Format "3:04 pm"}}
                 </a>
                 {{else}}
+                {{if eq $.Schedule.CreatedBy $.User.Sub}}
+                <li class="p-4 bg-slate-200 text-slate-400 rounded text-center">
+                    {{.Start.Format "3:04 pm"}}
+                    <br>
+                    <div>
+                        Booked by: {{.Booking.BookerName}} ({{.Booking.BookerEmail}})
+                    </div>
+                    <br>
+                    <a hx-delete="/schedules/{{$.Schedule.Sqid}}/bookings/{{.Booking.Sqid}}" hx-target="closest li"
+                        hx-swap="outerHTML" hx-confirm="Are you sure you want to cancel this booking?"
+                        class="hover:cursor-pointer hover:text-slate-600">Cancel</a>
+                </li>
+                {{else}}
                 <li class="p-4 bg-slate-200 text-slate-400 rounded text-center">
                     {{.Start.Format "3:04 pm"}}
                 </li>
+                {{end}}
                 {{end}}
                 {{end}}
                 {{end}}

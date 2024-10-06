@@ -22,7 +22,9 @@ type ScheduleRepository interface {
 	GetAllTimeSlots(ctx context.Context, scheduleId int64) ([]*TimeSlot, error)
 	GetTimeSlotsWithinRange(ctx context.Context, scheduleId int64, start time.Time, end time.Time) ([]*TimeSlot, error)
 	BookTimeSlot(ctx context.Context, scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) error
+	CancelBooking(ctx context.Context, booking *Booking) error
 	GetBookings(ctx context.Context, scheduleId int64) ([]*Booking, error)
+	GetBookingById(ctx context.Context, bookingId int64) (*Booking, error)
 	GetBookingsForUser(ctx context.Context, scheduleId int64, bookerEmail string) ([]*Booking, error)
 }
 
@@ -701,6 +703,34 @@ func (r *SQLScheduleRepository) parseTimeSlotSqlRows(rows *sql.Rows) ([]*TimeSlo
 	return timeslots, nil
 }
 
+func (r *SQLScheduleRepository) CancelBooking(ctx context.Context, booking *Booking) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // defer rollback incase anything fails
+
+	_, err = r.DB.ExecContext(ctx, `UPDATE timeSlot SET bookingId = NULL WHERE id = ?`, booking.TimeSlot.ID)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.DB.ExecContext(ctx, `DELETE FROM booking WHERE id = ?`, booking.ID)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	// if transaction is successful, set booking to nil
+	booking.TimeSlot.Booking = nil
+
+	return nil
+}
+
 func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int64, timeslot *TimeSlot, bookerName string, bookerEmail string) error {
 	var bookingId int64
 
@@ -754,6 +784,45 @@ func (r *SQLScheduleRepository) BookTimeSlot(ctx context.Context, scheduleId int
 	}
 
 	return nil
+}
+
+func (r *SQLScheduleRepository) GetBookingById(ctx context.Context, bookingId int64) (*Booking, error) {
+	rows, err := r.DB.QueryContext(ctx,
+		`SELECT
+			b.id,
+			b.bookerName,
+			b.bookerEmail,
+			b.createdOn,
+			b.updatedOn,
+			t.id,
+			t.start,
+			t.end,
+			t.createdOn,
+			t.updatedOn
+		FROM booking AS b
+		LEFT OUTER JOIN timeSlot AS t
+		ON b.timeSlotId = t.id
+		WHERE b.id = ?`, bookingId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	bookings, err := r.parseBookingSqlRows(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(bookings) == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	if len(bookings) > 1 {
+		return nil, fmt.Errorf("more than one booking found")
+	}
+
+	return bookings[0], nil
+
 }
 
 func (r *SQLScheduleRepository) GetBookings(ctx context.Context, scheduleId int64) ([]*Booking, error) {

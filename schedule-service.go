@@ -327,8 +327,10 @@ type ScheduleService interface {
 	FindAll(createdBy string) ([]*Schedule, error)
 	FindById(id int64) (*Schedule, error)
 	UpdateSchedulePublicShareStatus(id int64, requestingUser string, isSharedPublicly bool) error
+	GetBookingById(id int64) (*Booking, error)
 	GetBookingsForUser(scheduleId int64, bookerEmail string) ([]*Booking, error)
 	BookTimeSlot(scheduleId int64, timeslotId int64, bookerName string, bookerEmail string) (timeslot *TimeSlot, err error)
+	CancelBooking(scheduleId int64, bookingId int64, requestingUser Auth0Profile) error
 }
 
 type ScheduleServiceImpl struct {
@@ -407,6 +409,13 @@ func (s *ScheduleServiceImpl) GetTimeSlotsWithinRange(scheduleId int64, start ti
 	return s.repository.GetTimeSlotsWithinRange(ctx, scheduleId, start, end)
 }
 
+func (s *ScheduleServiceImpl) GetBookingById(id int64) (*Booking, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	return s.repository.GetBookingById(ctx, id)
+}
+
 func (s *ScheduleServiceImpl) GetBookingsForUser(scheduleId int64, bookerEmail string) ([]*Booking, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
 	defer cancel()
@@ -460,4 +469,30 @@ func (s *ScheduleServiceImpl) BookTimeSlot(scheduleId int64, timeslotId int64, b
 	}
 
 	return timeslot, nil
+}
+
+func (s *ScheduleServiceImpl) CancelBooking(scheduleId int64, bookingId int64, requestingUser Auth0Profile) error {
+	fmt.Printf("Cancelling booking %d for schedule %d\n", bookingId, scheduleId)
+	schedule, err := s.FindById(scheduleId)
+	if err != nil {
+		return err
+	}
+
+	booking, err := s.GetBookingById(bookingId)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Requesting user: %s\nSchedule created by: %s\n Requesting User Email %s\n Booking email %s\n", requestingUser.Sub, schedule.CreatedBy, requestingUser.Email, booking.BookerEmail)
+	fmt.Printf("is created by %v\n", requestingUser.Sub == schedule.CreatedBy)
+	fmt.Printf("is booker %v\n", requestingUser.Email == booking.BookerEmail)
+
+	if requestingUser.Sub != schedule.CreatedBy && requestingUser.Email != booking.BookerEmail {
+		return errors.New("user does not have permission to cancel booking")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.defaultRepositoryTimeout)
+	defer cancel()
+
+	return s.repository.CancelBooking(ctx, booking)
 }
